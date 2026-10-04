@@ -40,9 +40,17 @@ $('format-toggle').addEventListener('click', () => {
   $('format-toggle').innerHTML = state.format === 'short' ? 'Switch to 16:9 <span>→</span>' : 'Switch to 9:16 <span>→</span>';
 });
 
+function demoAnalysis(input) {
+  const dreamy = input.toLowerCase().includes('dream');
+  return { provider: 'demo', title: dreamy ? 'A softer kind of blue' : 'Neon after rain', subtitle: dreamy ? 'An ambient visual study in slow motion' : 'A cinematic study in motion & light', scenes: (dreamy ? scenes.dreamy : scenes.default).map(([, title, description]) => ({ title, description })) };
+}
+
 async function requestAnalysis(input) {
+  // GitHub Pages is static hosting, so never call the missing server route there.
+  if (window.location.hostname.endsWith('github.io')) return demoAnalysis(input);
   try {
     const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input, format: state.format }) });
+    if (!response.ok) return demoAnalysis(input);
     let result;
     try {
       result = await response.json();
@@ -57,8 +65,7 @@ async function requestAnalysis(input) {
     // GitHub Pages has no server runtime. Keep the public demo usable there;
     // the local/server deployment uses the Groq-backed endpoint above.
     if (error instanceof TypeError || /Failed to fetch/i.test(error.message)) {
-      const dreamy = input.toLowerCase().includes('dream');
-      return { provider: 'demo', title: dreamy ? 'A softer kind of blue' : 'Neon after rain', subtitle: dreamy ? 'An ambient visual study in slow motion' : 'A cinematic study in motion & light', scenes: (dreamy ? scenes.dreamy : scenes.default).map(([, title, description]) => ({ title, description })) };
+      return demoAnalysis(input);
     }
     throw error;
   }
