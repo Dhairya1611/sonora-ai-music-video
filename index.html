@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#09090d" />
+    <title>Sonora — AI music video studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="Sonora home"><span class="brand-mark">✦</span> sonora</a>
+      <div class="topbar-meta"><span class="status-dot"></span> Demo mode <span class="divider"></span> v0.1 studio</div>
+      <button class="ghost-button" id="connect-button">Connect YouTube <span>↗</span></button>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="eyebrow"><span class="eyebrow-line"></span> AI-directed music visuals</div>
+        <h1>Turn a feeling<br /><em>into a film.</em></h1>
+        <p class="hero-copy">Describe the sound, share a reference, and Sonora will shape an original visual world around it.</p>
+      </section>
+
+      <section class="studio-grid" aria-label="Music video studio">
+        <div class="control-panel panel">
+          <div class="panel-heading">
+            <div><span class="section-index">01</span><h2>Set the direction</h2></div>
+            <span class="mono-label">INPUT</span>
+          </div>
+          <div class="mode-switch" role="tablist" aria-label="Input type">
+            <button class="mode active" data-mode="reference" role="tab">Reference URL</button>
+            <button class="mode" data-mode="brief" role="tab">Creative brief</button>
+          </div>
+          <div class="input-wrap" id="reference-input">
+            <label for="source-input">YouTube music video URL</label>
+            <div class="field-with-icon"><span class="play-icon">▶</span><input id="source-input" type="url" placeholder="https://youtube.com/watch?v=..." autocomplete="off" /><span class="field-status">↗</span></div>
+            <small>We analyze public metadata and your direction. We do not copy the reference video.</small>
+          </div>
+          <div class="input-wrap hidden" id="brief-input">
+            <label for="brief-text">What should it feel like?</label>
+            <textarea id="brief-text" rows="3" placeholder="A dreamy late-night drive through Mumbai, violet neon, slow bass..." spellcheck="true"></textarea>
+            <small>Include mood, genre, colors, location, or story ideas.</small>
+          </div>
+          <div class="quick-tags" aria-label="Quick creative directions">
+            <button data-tag="cinematic">Cinematic</button><button data-tag="dreamy">Dreamy</button><button data-tag="high energy">High energy</button><button data-tag="minimal">Minimal</button>
+          </div>
+          <div class="direction-row"><div><span class="row-label">OUTPUT</span><strong id="format-label">YouTube Short · 9:16</strong></div><button class="format-toggle" id="format-toggle">Switch to 16:9 <span>→</span></button></div>
+          <button class="primary-button" id="generate-button"><span class="button-icon">✦</span> Build my visual world <span class="arrow">↗</span></button>
+        </div>
+
+        <div class="preview-panel panel">
+          <div class="preview-top"><div><span class="section-index">02</span><h2>Preview direction</h2></div><span class="draft-pill" id="draft-pill">DRAFT 01</span></div>
+          <div class="visual-preview" id="visual-preview">
+            <div class="preview-grid"></div><div class="sun-disc"></div><div class="mountain mountain-back"></div><div class="mountain mountain-front"></div>
+            <div class="preview-copy"><span class="preview-kicker">SONORA / VISUAL STUDY</span><strong id="preview-title">Neon after rain</strong><span id="preview-subtitle">A cinematic study in motion &amp; light</span></div>
+            <div class="preview-controls"><button aria-label="Play preview" id="play-button">▶</button><span>00:00 / 00:30</span><span class="control-spacer"></span><span>▣</span><span>⛶</span></div>
+          </div>
+          <div class="preview-footer"><div class="audio-line"><span class="audio-bars">▮▮▮ ▮▮▮▮ ▮▮ ▮▮▮▮▮</span><span>Original visual score</span></div><span class="mono-label">AI STORYBOARD</span></div>
+        </div>
+      </section>
+
+      <section class="lower-grid">
+        <div class="story-panel panel"><div class="panel-heading"><div><span class="section-index">03</span><h2>Storyboard</h2></div><span class="mono-label" id="scene-count">04 SCENES</span></div><div class="scene-list" id="scene-list"></div></div>
+        <div class="publish-panel panel"><div class="panel-heading"><div><span class="section-index">04</span><h2>Publish</h2></div><span class="mono-label">OPTIONAL</span></div><div class="publish-card"><div class="youtube-badge">▶</div><div><strong>Upload to your channel</strong><p>Connect YouTube after reviewing your final cut.</p></div><span class="lock">⌑</span></div><div class="publish-note"><span>ⓘ</span><span>Videos are created as private by default. You stay in control of the final upload.</span></div><button class="outline-button" id="publish-button" disabled>Connect YouTube to continue <span>↗</span></button></div>
+      </section>
+    </main>
+    <footer><span>SONORA © 2026</span><span>Original visuals · Human approval required</span><span>Built for the open creative web</span></footer>
+    <script src="app.js"></script>
+  </body>
+</html>
