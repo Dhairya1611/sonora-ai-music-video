@@ -67,7 +67,8 @@ async function requestAnalysis(input) {
     if (error instanceof TypeError || /Failed to fetch/i.test(error.message)) {
       return demoAnalysis(input);
     }
-    throw error;
+    console.warn('Sonora analysis unavailable; using Demo Mode.', error);
+    return demoAnalysis(input);
   }
 }
 
@@ -86,7 +87,8 @@ $('generate-button').addEventListener('click', async () => {
     if (Array.isArray(result.scenes) && result.scenes.length) $('scene-list').innerHTML = result.scenes.map((scene, index) => `<article class="scene"><span class="scene-number">0${index + 1} / 04</span><strong>${scene.title}</strong><p>${scene.description}</p></article>`).join('');
     state.generated = true;
   } catch (error) {
-    window.alert(error.message);
+    $('draft-pill').textContent = 'DEMO MODE';
+    $('draft-pill').title = error.message;
   } finally {
     button.disabled = false;
     button.innerHTML = original;
@@ -94,7 +96,8 @@ $('generate-button').addEventListener('click', async () => {
 });
 
 $('connect-button').addEventListener('click', () => {
-  window.alert('YouTube OAuth is not configured in this GitHub Pages demo yet. No Google account has been connected.');
+  $('connect-button').textContent = 'OAuth setup required ↗';
+  $('connect-button').title = 'YouTube OAuth is not configured in this GitHub Pages demo. No Google account has been connected.';
 });
 
 $('publish-button').addEventListener('click', () => {
