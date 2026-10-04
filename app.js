@@ -43,7 +43,14 @@ $('format-toggle').addEventListener('click', () => {
 async function requestAnalysis(input) {
   try {
     const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input, format: state.format }) });
-    const result = await response.json();
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      // GitHub Pages returns an HTML 404 for /api/analyze. Treat that as the
+      // expected public-demo case instead of surfacing a JSON parse error.
+      throw new TypeError('Demo Mode endpoint unavailable');
+    }
     if (!response.ok) throw new Error(result.error || 'Analysis failed');
     return result;
   } catch (error) {
@@ -80,11 +87,7 @@ $('generate-button').addEventListener('click', async () => {
 });
 
 $('connect-button').addEventListener('click', () => {
-  state.connected = true;
-  $('connect-button').innerHTML = 'YouTube connected <span>✓</span>';
-  $('connect-button').style.color = 'var(--accent)';
-  $('publish-button').disabled = false;
-  $('publish-button').textContent = 'Upload private draft ↗';
+  window.alert('YouTube OAuth is not configured in this GitHub Pages demo yet. No Google account has been connected.');
 });
 
 $('publish-button').addEventListener('click', () => {
