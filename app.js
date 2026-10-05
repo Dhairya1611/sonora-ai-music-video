@@ -88,7 +88,7 @@ async function connectYouTube() {
       }
     },
   });
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  tokenClient.requestAccessToken({ prompt: 'select_account consent' });
 }
 
 async function requestAnalysis(input) {
