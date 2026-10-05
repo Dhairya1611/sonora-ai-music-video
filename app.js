@@ -1,4 +1,5 @@
 const state = { mode: 'reference', format: 'short', connected: false, generated: false, accessToken: null, channelTitle: '', videoBlob: null, previewUrl: '' };
+const PREVIEW_SECONDS = 10;
 const YOUTUBE_CLIENT_ID = '442084033193-giinlub1bcoh39r5v2ior5nr2aq7oe1r.apps.googleusercontent.com';
 const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
 let tokenClient;
@@ -329,18 +330,22 @@ function scheduleMusic(context, destination, input) {
   const random = seededRandom(hashInput(input));
   const direction = input.toLowerCase();
   const profiles = [
-    { name: 'acoustic pulse', tempo: 94, scale: [0, 2, 3, 5, 7, 10], chord: [0, 3, 5, 4], kit: 'organic' },
-    { name: 'midnight groove', tempo: 108, scale: [0, 2, 3, 5, 7, 9, 10], chord: [0, 5, 3, 4], kit: 'groove' },
-    { name: 'dream-pop pulse', tempo: 86, scale: [0, 2, 3, 7, 9, 10], chord: [0, 3, 5, 4], kit: 'soft' },
-    { name: 'cinematic motion', tempo: 102, scale: [0, 2, 4, 5, 7, 9, 11], chord: [0, 4, 5, 3], kit: 'wide' },
+    { name: 'acoustic pulse', tempo: 94, scale: [0, 2, 3, 5, 7, 10], chord: [0, 3, 5, 4], melody: [0, 2, 4, 2, 5, 4, 2, 0], kit: 'organic', leadType: 'triangle', leadRest: 0.18 },
+    { name: 'midnight groove', tempo: 108, scale: [0, 2, 3, 5, 7, 9, 10], chord: [0, 5, 3, 4], melody: [0, 0, 2, 4, 2, 5, 4, 2], kit: 'groove', leadType: 'sawtooth', leadRest: 0.08 },
+    { name: 'dream-pop pulse', tempo: 86, scale: [0, 2, 3, 7, 9, 10], chord: [0, 3, 5, 4], melody: [4, 5, 4, 2, 0, 2, 4, 5], kit: 'soft', leadType: 'sine', leadRest: 0.35 },
+    { name: 'cinematic motion', tempo: 102, scale: [0, 2, 4, 5, 7, 9, 11], chord: [0, 4, 5, 3], melody: [0, 4, 2, 5, 4, 7, 5, 2], kit: 'wide', leadType: 'triangle', leadRest: 0.22 },
   ];
-  const profile = profiles[hashInput(input) % profiles.length];
+  const seed = hashInput(input);
+  const profile = profiles[seed % profiles.length];
   if (direction.includes('dream') || direction.includes('ambient') || direction.includes('soft')) profile.tempo = Math.min(profile.tempo, 92);
-  const root = [45, 48, 50, 52, 55, 57][Math.floor(random() * 6)];
+  const rootChoices = [{ midi: 45, name: 'A' }, { midi: 48, name: 'C' }, { midi: 50, name: 'D' }, { midi: 52, name: 'E' }, { midi: 55, name: 'G' }, { midi: 57, name: 'A' }];
+  const rootChoice = rootChoices[Math.floor(random() * rootChoices.length)];
+  const root = rootChoice.midi;
+  const keyName = `${rootChoice.name} ${profile.scale[2] === 3 ? 'minor' : 'major'}`;
   const beat = 60 / profile.tempo;
   const step = beat / 2;
   const start = context.currentTime + 0.08;
-  const length = 6;
+  const length = PREVIEW_SECONDS;
   const steps = Math.ceil(length / step);
   const compressor = context.createDynamicsCompressor();
   compressor.threshold.value = -24;
@@ -364,12 +369,15 @@ function scheduleMusic(context, destination, input) {
       scheduleTone(context, compressor, midiToFrequency(chordRoot - 12), when, beat * 0.42, 0.075, 'sine', reverb, (random() - 0.5) * 0.25);
       scheduleTone(context, compressor, midiToFrequency(chordRoot + 12), when, beat * 0.25, 0.035, 'triangle', reverb, (random() - 0.5) * 0.45);
     }
-    if (index % 4 === 0) {
+    const kickHit = profile.kit === 'groove' ? index % 4 === 0 || index % 8 === 6 : profile.kit === 'soft' ? index % 8 === 0 : profile.kit === 'wide' ? index % 4 === 0 || index % 8 === 3 : index % 4 === 0;
+    if (kickHit) {
       scheduleKick(context, compressor, when, profile.kit === 'groove' ? 0.34 : 0.25);
       scheduleTone(context, compressor, midiToFrequency(chordRoot + 12), when + step * 0.03, beat * 0.8, 0.028, 'sawtooth', reverb, -0.2);
     }
-    if (index % 8 === 4 || (profile.kit === 'groove' && index % 8 === 7)) scheduleNoise(context, compressor, when, 0.15, 0.085, 700, reverb, 0.16);
-    if (index % 2 === 0 || random() > 0.72) scheduleNoise(context, compressor, when + step * 0.16, 0.052, 0.02, 4200, null, random() > 0.5 ? 0.45 : -0.45);
+    const snareHit = profile.kit === 'soft' ? index % 8 === 6 : profile.kit === 'wide' ? index % 8 === 4 : index % 8 === 4 || (profile.kit === 'groove' && index % 8 === 7);
+    if (snareHit) scheduleNoise(context, compressor, when, 0.15, profile.kit === 'soft' ? 0.045 : 0.085, 700, reverb, 0.16);
+    const hatHit = profile.kit === 'soft' ? index % 4 === 2 : profile.kit === 'wide' ? index % 2 === 1 : index % 2 === 0 || random() > 0.72;
+    if (hatHit) scheduleNoise(context, compressor, when + step * 0.16, 0.052, profile.kit === 'soft' ? 0.012 : 0.02, 4200, null, random() > 0.5 ? 0.45 : -0.45);
 
     // A plucked, acoustic-style arpeggio gives each generated score a musical
     // identity instead of a row of identical electronic beeps.
@@ -381,12 +389,13 @@ function scheduleMusic(context, destination, input) {
       scheduleTone(context, pad, midiToFrequency(third), when, beat * 1.9, 0.12, 'sine', null, -0.3);
       scheduleTone(context, pad, midiToFrequency(fifth), when, beat * 1.9, 0.1, 'triangle', null, 0.3);
     }
-    if (index % 2 === 0 && random() > 0.2) {
-      const melodyNote = chordRoot + profile.scale[(index / 2 + Math.floor(random() * 3)) % profile.scale.length] + 24;
-      scheduleTone(context, compressor, midiToFrequency(melodyNote), when + step * 0.04, beat * 0.34, 0.045 + random() * 0.025, 'sine', reverb, (random() - 0.5) * 0.8);
+    if (index % 2 === 0 && random() > profile.leadRest) {
+      const phraseIndex = (index / 2 + Math.floor(seed / 97) % profile.melody.length) % profile.melody.length;
+      const melodyNote = chordRoot + profile.scale[profile.melody[phraseIndex] % profile.scale.length] + 24;
+      scheduleTone(context, compressor, midiToFrequency(melodyNote), when + step * 0.04, beat * 0.34, 0.045 + random() * 0.025, profile.leadType, reverb, (random() - 0.5) * 0.8);
     }
   }
-  return profile;
+  return { ...profile, keyName, seed };
 }
 
 function canvasVideo(title, format, input, audioContext) {
@@ -415,7 +424,7 @@ function canvasVideo(title, format, input, audioContext) {
     };
     const started = performance.now();
     const draw = (now) => {
-      const progress = Math.min((now - started) / 6000, 1);
+      const progress = Math.min((now - started) / (PREVIEW_SECONDS * 1000), 1);
       const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
       gradient.addColorStop(0, '#17174b'); gradient.addColorStop(.48, '#6c3f88'); gradient.addColorStop(1, '#f0a16e');
       context.fillStyle = gradient; context.fillRect(0, 0, canvas.width, canvas.height);
@@ -435,7 +444,7 @@ function canvasVideo(title, format, input, audioContext) {
         return;
       }
       const profile = scheduleMusic(audioContext, audioDestination, input);
-      $('audio-label').textContent = `Original ${profile.name}`;
+      $('audio-label').textContent = `Original ${profile.name} · ${profile.keyName} · ${profile.tempo} BPM`;
       recorder.start();
       requestAnimationFrame(draw);
     };
