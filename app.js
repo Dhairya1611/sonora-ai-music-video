@@ -48,6 +48,10 @@ function demoAnalysis(input) {
   return { provider: 'demo', title: dreamy ? 'A softer kind of blue' : 'Neon after rain', subtitle: dreamy ? 'An ambient visual study in slow motion' : 'A cinematic study in motion & light', scenes: (dreamy ? scenes.dreamy : scenes.default).map(([, title, description]) => ({ title, description })) };
 }
 
+function setBuildPhase(label, detail = '') {
+  $('build-status').textContent = detail ? `${label} · ${detail}` : label;
+}
+
 function waitForGoogle() {
   return new Promise((resolve, reject) => {
     const started = Date.now();
@@ -122,21 +126,35 @@ $('generate-button').addEventListener('click', async () => {
   const button = $('generate-button');
   const original = button.innerHTML;
   const input = state.mode === 'reference' ? $('source-input').value.trim() : $('brief-text').value.trim();
-  if (!input) { (state.mode === 'reference' ? $('source-input') : $('brief-text')).focus(); return; }
+  if (!input) {
+    const field = state.mode === 'reference' ? $('source-input') : $('brief-text');
+    field.focus();
+    $('draft-pill').textContent = 'ADD A DIRECTION';
+    $('draft-pill').title = state.mode === 'reference' ? 'Paste a YouTube music video URL first.' : 'Describe the music video you want first.';
+    setBuildPhase('Waiting for input', state.mode === 'reference' ? 'paste a YouTube URL' : 'describe the music');
+    return;
+  }
   button.disabled = true;
   button.innerHTML = '<span class="button-icon">◌</span> Building your visual world…';
+  setBuildPhase('Phase 1/5 · Input received', 'checking your direction');
   try {
+    setBuildPhase('Phase 2/5 · Analyzing', state.mode === 'reference' ? 'reading the public reference' : 'mapping mood and intent');
     const result = await requestAnalysis(input);
+    setBuildPhase('Phase 3/5 · Storyboarding', 'arranging four visual scenes');
     $('preview-title').textContent = result.title || 'Neon after rain';
     $('preview-subtitle').textContent = result.subtitle || 'A cinematic study in motion & light';
     $('draft-pill').textContent = 'DRAFT 02';
     if (Array.isArray(result.scenes) && result.scenes.length) $('scene-list').innerHTML = result.scenes.map((scene, index) => `<article class="scene"><span class="scene-number">0${index + 1} / 04</span><strong>${scene.title}</strong><p>${scene.description}</p></article>`).join('');
     state.generated = true;
+    setBuildPhase('Phase 4/5 · Rendering preview', 'preparing the visual direction');
     if (state.connected) $('publish-button').disabled = false;
     $('publish-button').textContent = state.connected ? 'Upload private draft ↗' : 'Connect YouTube to upload';
+    await new Promise((resolve) => window.setTimeout(resolve, 450));
+    setBuildPhase('Phase 5/5 · Ready', 'review your visual world below');
   } catch (error) {
     $('draft-pill').textContent = 'DEMO MODE';
     $('draft-pill').title = error.message;
+    setBuildPhase('Build stopped', error.message);
   } finally {
     button.disabled = false;
     button.innerHTML = original;
