@@ -486,7 +486,7 @@ function scheduleMusic(context, destination, input, sourceProfile = null) {
   return { ...profile, keyName, seed };
 }
 
-function canvasVideo(title, format, input, audioContext) {
+function canvasVideo(title, format, input, audioContext, sourceProfile = null) {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
     canvas.width = format === 'short' ? 720 : 1280;
