@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=preview-audio-v4" />
+    <link rel="stylesheet" href="styles.css?v=source-remix-v1" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
@@ -40,7 +40,8 @@
           <div class="input-wrap" id="reference-input">
             <label for="source-input">YouTube music video URL</label>
             <div class="field-with-icon"><span class="play-icon">▶</span><input id="source-input" type="url" placeholder="https://youtube.com/watch?v=..." autocomplete="off" /><span class="field-status">↗</span></div>
-            <small>We analyze public metadata and your direction. We do not copy the reference video.</small>
+            <small>URL mode creates an original score from the link as inspiration. YouTube does not expose its waveform here.</small>
+            <div class="audio-source-row"><label for="audio-source">Optional source audio you own or are cleared to remix</label><input id="audio-source" type="file" accept="audio/*" /><small id="audio-file-status">No source audio selected</small></div>
           </div>
           <div class="input-wrap hidden" id="brief-input">
             <label for="brief-text">What should it feel like?</label>
@@ -73,6 +74,6 @@
       </section>
     </main>
     <footer><span>SONORA © 2026</span><span>Original visuals · Human approval required</span><span>Built for the open creative web</span></footer>
-    <script src="app.js?v=preview-audio-v4"></script>
+    <script src="app.js?v=source-remix-v1"></script>
   </body>
 </html>
