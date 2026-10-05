@@ -1,4 +1,4 @@
-const state = { mode: 'reference', format: 'short', connected: false, generated: false, accessToken: null, channelTitle: '', videoBlob: null, previewUrl: '', sourceAudioFile: null, sourceAudioProfile: null };
+const state = { mode: 'brief', format: 'short', connected: false, generated: false, accessToken: null, channelTitle: '', videoBlob: null, previewUrl: '' };
 const PREVIEW_SECONDS = 10;
 const YOUTUBE_CLIENT_ID = '442084033193-giinlub1bcoh39r5v2ior5nr2aq7oe1r.apps.googleusercontent.com';
 const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
@@ -44,31 +44,21 @@ $('format-toggle').addEventListener('click', () => {
   $('format-toggle').innerHTML = state.format === 'short' ? 'Switch to 16:9 <span>→</span>' : 'Switch to 9:16 <span>→</span>';
 });
 
-$('audio-source').addEventListener('change', async (event) => {
-  const file = event.currentTarget.files?.[0];
-  if (!file) {
-    state.sourceAudioFile = null;
-    state.sourceAudioProfile = null;
-    $('audio-file-status').textContent = 'No source audio selected';
-    return;
-  }
-  try {
-    $('audio-file-status').textContent = 'Analyzing waveform…';
-    state.sourceAudioProfile = await analyzeSourceAudio(file);
-    state.sourceAudioFile = file;
-    $('audio-file-status').textContent = `${file.name} · ${state.sourceAudioProfile.bpm} BPM · waveform mapped`;
-  } catch (error) {
-    state.sourceAudioFile = null;
-    state.sourceAudioProfile = null;
-    $('audio-file-status').textContent = 'Audio could not be decoded';
-    event.currentTarget.value = '';
-    $('build-status').textContent = `Source audio error · ${error.message}`;
-  }
-});
+function inferMusicAnalysis(input) {
+  const direction = input.toLowerCase();
+  const dreamy = /dream|ambient|soft|ethereal|calm|lo-fi/.test(direction);
+  const energetic = /dance|edm|house|techno|upbeat|energetic|club|trap|hip.?hop/.test(direction);
+  const acoustic = /acoustic|guitar|piano|folk|organic|indie|jazz|strings/.test(direction);
+  const genre = energetic ? 'electronic' : acoustic ? 'acoustic indie' : dreamy ? 'ambient pop' : 'cinematic pop';
+  const instruments = acoustic ? ['fingerpicked acoustic guitar', 'warm piano', 'brush drums', 'round bass'] : energetic ? ['analog synth bass', 'bright pluck', 'four-on-the-floor kick', 'claps and hi-hats'] : ['felt piano', 'soft strings', 'sub bass', 'textured drums'];
+  const tempo = energetic ? 122 : dreamy ? 82 : acoustic ? 96 : 108;
+  return { genre, mood: dreamy ? 'dreamy' : energetic ? 'driving' : acoustic ? 'warm' : 'cinematic', energy: energetic ? 'high' : dreamy ? 'low' : 'building', tempo, instruments, palette: ['violet', 'warm amber', 'midnight blue'], visualThemes: ['motion', 'light', 'atmosphere'] };
+}
 
 function demoAnalysis(input) {
-  const dreamy = input.toLowerCase().includes('dream');
-  return { provider: 'demo', title: dreamy ? 'A softer kind of blue' : 'Neon after rain', subtitle: dreamy ? 'An ambient visual study in slow motion' : 'A cinematic study in motion & light', scenes: (dreamy ? scenes.dreamy : scenes.default).map(([, title, description]) => ({ title, description })) };
+  const analysis = inferMusicAnalysis(input);
+  const dreamy = analysis.mood === 'dreamy';
+  return { provider: 'demo', title: dreamy ? 'A softer kind of blue' : 'Neon after rain', subtitle: `${analysis.genre} · ${analysis.tempo} BPM · ${analysis.instruments.slice(0, 2).join(' + ')}`, analysis, scenes: (dreamy ? scenes.dreamy : scenes.default).map(([, title, description]) => ({ title, description })) };
 }
 
 function setBuildPhase(label, detail = '') {
@@ -122,11 +112,11 @@ async function connectYouTube() {
   tokenClient.requestAccessToken({ prompt: 'select_account consent' });
 }
 
-async function requestAnalysis(input) {
+async function requestAnalysis(input, reference = '') {
   // GitHub Pages is static hosting, so never call the missing server route there.
   if (window.location.hostname.endsWith('github.io')) return demoAnalysis(input);
   try {
-    const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input, format: state.format }) });
+    const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input, reference, format: state.format }) });
     if (!response.ok) return demoAnalysis(input);
     let result;
     try {
@@ -152,13 +142,14 @@ async function requestAnalysis(input) {
 $('generate-button').addEventListener('click', async () => {
   const button = $('generate-button');
   const original = button.innerHTML;
-  const input = state.mode === 'reference' ? $('source-input').value.trim() : $('brief-text').value.trim();
+  const brief = $('brief-text').value.trim();
+  const reference = $('source-input').value.trim();
+  const input = [brief, reference ? `Optional reference: ${reference}` : ''].filter(Boolean).join('\n');
   if (!input) {
-    const field = state.mode === 'reference' ? $('source-input') : $('brief-text');
-    field.focus();
+    $('brief-text').focus();
     $('draft-pill').textContent = 'ADD A DIRECTION';
-    $('draft-pill').title = state.mode === 'reference' ? 'Paste a YouTube music video URL first.' : 'Describe the music video you want first.';
-    setBuildPhase('Waiting for input', state.mode === 'reference' ? 'paste a YouTube URL' : 'describe the music');
+    $('draft-pill').title = 'Describe the music you want first.';
+    setBuildPhase('Waiting for input', 'describe the music');
     return;
   }
   button.disabled = true;
@@ -170,8 +161,8 @@ $('generate-button').addEventListener('click', async () => {
     audioContext = createMusicContext();
     setBuildPhase('Phase 1/5 · Input received', 'checking your direction');
     await pause(350);
-    setBuildPhase('Phase 2/5 · Analyzing', state.sourceAudioProfile ? 'mapping waveform, energy and tempo' : state.mode === 'reference' ? 'using the URL as creative inspiration' : 'mapping mood and intent');
-    const result = await requestAnalysis(input);
+    setBuildPhase('Phase 2/5 · Analyzing', reference ? 'mapping your brief + reference inspiration' : 'mapping genre, mood, tempo and instruments');
+    const result = await requestAnalysis(input, reference);
     await pause(650);
     setBuildPhase('Phase 3/5 · Storyboarding', 'arranging four visual scenes');
     await pause(650);
@@ -180,7 +171,7 @@ $('generate-button').addEventListener('click', async () => {
     $('draft-pill').textContent = 'DRAFT 02';
     if (Array.isArray(result.scenes) && result.scenes.length) $('scene-list').innerHTML = result.scenes.map((scene, index) => `<article class="scene"><span class="scene-number">0${index + 1} / 04</span><strong>${scene.title}</strong><p>${scene.description}</p></article>`).join('');
     setBuildPhase('Phase 4/5 · Rendering preview', 'composing original music + visuals');
-    state.videoBlob = await canvasVideo($('preview-title').textContent, state.format, input, audioContext, state.sourceAudioProfile);
+    state.videoBlob = await canvasVideo($('preview-title').textContent, state.format, input, audioContext, result.analysis || {});
     state.generated = true;
     if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
     state.previewUrl = URL.createObjectURL(state.videoBlob);
@@ -314,48 +305,6 @@ function midiToFrequency(note) {
   return 440 * (2 ** ((note - 69) / 12));
 }
 
-async function analyzeSourceAudio(file) {
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) throw new Error('This browser cannot decode source audio.');
-  const context = new AudioContextClass();
-  try {
-    const decoded = await context.decodeAudioData(await file.arrayBuffer());
-    const channel = decoded.getChannelData(0);
-    const windowCount = 48;
-    const windowSize = Math.max(1, Math.floor(channel.length / windowCount));
-    const waveform = [];
-    for (let windowIndex = 0; windowIndex < windowCount; windowIndex += 1) {
-      const start = windowIndex * windowSize;
-      const end = Math.min(channel.length, start + windowSize);
-      let sum = 0;
-      for (let index = start; index < end; index += 1) sum += channel[index] ** 2;
-      waveform.push(Math.sqrt(sum / Math.max(1, end - start)));
-    }
-    const peak = Math.max(...waveform, 0.0001);
-    const normalizedWaveform = waveform.map((value) => Math.min(1, value / peak));
-    const hop = Math.max(1, Math.floor(decoded.sampleRate * 0.05));
-    const envelope = [];
-    for (let start = 0; start < channel.length; start += hop) {
-      const end = Math.min(channel.length, start + hop);
-      let sum = 0;
-      for (let index = start; index < end; index += 1) sum += channel[index] ** 2;
-      envelope.push(Math.sqrt(sum / Math.max(1, end - start)));
-    }
-    const average = envelope.reduce((sum, value) => sum + value, 0) / Math.max(1, envelope.length);
-    let bestBpm = 100;
-    let bestScore = -Infinity;
-    for (let bpm = 70; bpm <= 150; bpm += 1) {
-      const lag = Math.max(1, Math.round(60 / bpm / 0.05));
-      let score = 0;
-      for (let index = lag; index < envelope.length; index += 1) score += Math.max(0, envelope[index] - average) * Math.max(0, envelope[index - lag] - average);
-      if (score > bestScore) { bestScore = score; bestBpm = bpm; }
-    }
-    return { buffer: decoded, waveform: normalizedWaveform, energy: envelope, bpm: bestBpm, duration: decoded.duration };
-  } finally {
-    await context.close();
-  }
-}
-
 function createReverb(context, output, random) {
   const reverb = context.createConvolver();
   const wet = context.createGain();
@@ -390,39 +339,30 @@ function scheduleKick(context, output, when, volume) {
   oscillator.stop(when + 0.22);
 }
 
-function scheduleSourceRemix(context, output, sourceProfile, start, random) {
-  const source = context.createBufferSource();
-  const filter = context.createBiquadFilter();
-  const gain = context.createGain();
-  const panner = context.createStereoPanner();
-  source.buffer = sourceProfile.buffer;
-  source.loop = true;
-  source.playbackRate.value = 0.94 + random() * 0.12;
-  source.detune.value = (random() - 0.5) * 80;
-  filter.type = 'lowpass';
-  filter.frequency.value = 2200 + random() * 2600;
-  filter.Q.value = 0.8;
-  gain.gain.value = 0.28;
-  panner.pan.value = random() - 0.5;
-  source.connect(filter);
-  filter.connect(gain);
-  gain.connect(panner);
-  panner.connect(output);
-  source.start(start, (sourceProfile.duration * random()) % sourceProfile.duration);
-  source.stop(start + PREVIEW_SECONDS + 0.2);
+function sourceEnergyForFrame(analysis, progress) {
+  const energy = String(analysis.energy || '').toLowerCase();
+  const base = /high|driving|energetic/.test(energy) ? 0.82 : /low|calm|soft/.test(energy) ? 0.3 : 0.56;
+  const tempo = Number(analysis.tempo) || 100;
+  return Math.max(0.18, Math.min(1, base + Math.sin(progress * Math.PI * (tempo / 28)) * 0.16));
 }
 
-function scheduleMusic(context, destination, input, sourceProfile = null) {
+function scheduleMusic(context, destination, input, analysis = {}) {
   const random = seededRandom(hashInput(input));
-  const direction = input.toLowerCase();
+  const direction = `${input} ${JSON.stringify(analysis)}`.toLowerCase();
   const profiles = [
     { name: 'acoustic pulse', tempo: 94, scale: [0, 2, 3, 5, 7, 10], chord: [0, 3, 5, 4], melody: [0, 2, 4, 2, 5, 4, 2, 0], kit: 'organic', leadType: 'triangle', leadRest: 0.18 },
     { name: 'midnight groove', tempo: 108, scale: [0, 2, 3, 5, 7, 9, 10], chord: [0, 5, 3, 4], melody: [0, 0, 2, 4, 2, 5, 4, 2], kit: 'groove', leadType: 'sawtooth', leadRest: 0.08 },
     { name: 'dream-pop pulse', tempo: 86, scale: [0, 2, 3, 7, 9, 10], chord: [0, 3, 5, 4], melody: [4, 5, 4, 2, 0, 2, 4, 5], kit: 'soft', leadType: 'sine', leadRest: 0.35 },
     { name: 'cinematic motion', tempo: 102, scale: [0, 2, 4, 5, 7, 9, 11], chord: [0, 4, 5, 3], melody: [0, 4, 2, 5, 4, 7, 5, 2], kit: 'wide', leadType: 'triangle', leadRest: 0.22 },
   ];
-  const seed = hashInput(input);
-  const profile = profiles[seed % profiles.length];
+  const seed = hashInput(direction);
+  const requestedGenre = String(analysis.genre || '').toLowerCase();
+  const profileIndex = /electronic|dance|house|techno|trap/.test(requestedGenre) ? 1 : /ambient|dream|lo-fi/.test(requestedGenre) ? 2 : /acoustic|folk|indie|jazz/.test(requestedGenre) ? 0 : /cinematic|orchestral|film/.test(requestedGenre) ? 3 : seed % profiles.length;
+  const profile = { ...profiles[profileIndex], scale: [...profiles[profileIndex].scale], chord: [...profiles[profileIndex].chord], melody: [...profiles[profileIndex].melody] };
+  const requestedTempo = Number(analysis.tempo);
+  if (Number.isFinite(requestedTempo)) profile.tempo = Math.max(70, Math.min(150, requestedTempo));
+  if (/piano|keys/.test(String(analysis.instruments || '').toLowerCase())) profile.leadType = 'sine';
+  if (/guitar|pluck|acoustic/.test(String(analysis.instruments || '').toLowerCase())) profile.leadType = 'triangle';
   if (direction.includes('dream') || direction.includes('ambient') || direction.includes('soft')) profile.tempo = Math.min(profile.tempo, 92);
   const rootChoices = [{ midi: 45, name: 'A' }, { midi: 48, name: 'C' }, { midi: 50, name: 'D' }, { midi: 52, name: 'E' }, { midi: 55, name: 'G' }, { midi: 57, name: 'A' }];
   const rootChoice = rootChoices[Math.floor(random() * rootChoices.length)];
@@ -441,7 +381,6 @@ function scheduleMusic(context, destination, input, sourceProfile = null) {
   compressor.release.value = 0.2;
   compressor.connect(destination);
   const reverb = createReverb(context, compressor, random);
-  if (sourceProfile?.buffer) scheduleSourceRemix(context, compressor, sourceProfile, start, random);
   const pad = context.createGain();
   pad.gain.value = profile.kit === 'soft' ? 0.09 : 0.055;
   pad.connect(compressor);
@@ -452,7 +391,7 @@ function scheduleMusic(context, destination, input, sourceProfile = null) {
     const bar = Math.floor(index / 8);
     const chordRoot = root + profile.chord[bar % profile.chord.length];
     const scaleNote = (stepIndex) => profile.scale[(stepIndex + bar) % profile.scale.length];
-    const sourceEnergy = sourceProfile?.energy ? Math.min(1, (sourceProfile.energy[Math.floor((index / steps) * sourceProfile.energy.length)] || 0) * 3) : 0.5;
+    const sourceEnergy = /high|driving|energetic/.test(String(analysis.energy || '').toLowerCase()) ? 0.9 : /low|calm|soft/.test(String(analysis.energy || '').toLowerCase()) ? 0.35 : 0.6;
     if (index % 2 === 0) {
       scheduleTone(context, compressor, midiToFrequency(chordRoot - 12), when, beat * 0.42, 0.055 + sourceEnergy * 0.045, 'sine', reverb, (random() - 0.5) * 0.25);
       scheduleTone(context, compressor, midiToFrequency(chordRoot + 12), when, beat * 0.25, 0.035, 'triangle', reverb, (random() - 0.5) * 0.45);
@@ -486,7 +425,7 @@ function scheduleMusic(context, destination, input, sourceProfile = null) {
   return { ...profile, keyName, seed };
 }
 
-function canvasVideo(title, format, input, audioContext, sourceProfile = null) {
+function canvasVideo(title, format, input, audioContext, analysis = {}) {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
     canvas.width = format === 'short' ? 720 : 1280;
@@ -513,7 +452,7 @@ function canvasVideo(title, format, input, audioContext, sourceProfile = null) {
     const started = performance.now();
     const draw = (now) => {
       const progress = Math.min((now - started) / (PREVIEW_SECONDS * 1000), 1);
-      const sourceWave = sourceProfile?.waveform?.[Math.min(sourceProfile.waveform.length - 1, Math.floor(progress * sourceProfile.waveform.length))] || 0.45;
+      const sourceWave = sourceEnergyForFrame(analysis, progress);
       const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
       gradient.addColorStop(0, '#17174b'); gradient.addColorStop(.48, '#6c3f88'); gradient.addColorStop(1, '#f0a16e');
       context.fillStyle = gradient; context.fillRect(0, 0, canvas.width, canvas.height);
@@ -532,8 +471,8 @@ function canvasVideo(title, format, input, audioContext, sourceProfile = null) {
         reject(new Error('The browser blocked music playback. Click Build again to authorize the audio preview.'));
         return;
       }
-      const profile = scheduleMusic(audioContext, audioDestination, input, sourceProfile);
-      $('audio-label').textContent = sourceProfile ? `Remix · ${profile.name} · source ${sourceProfile.bpm} BPM` : `Original ${profile.name} · ${profile.keyName} · ${profile.tempo} BPM`;
+      const profile = scheduleMusic(audioContext, audioDestination, input, analysis);
+      $('audio-label').textContent = `AI music score · ${profile.name} · ${profile.keyName} · ${profile.tempo} BPM`;
       recorder.start();
       requestAnimationFrame(draw);
     };
