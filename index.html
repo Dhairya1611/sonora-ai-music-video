@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=source-remix-v3" />
+    <link rel="stylesheet" href="styles.css?v=prompt-first-v1" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
@@ -24,7 +24,7 @@
       <section class="hero">
         <div class="eyebrow"><span class="eyebrow-line"></span> AI-directed music visuals</div>
         <h1>Turn a feeling<br /><em>into a film.</em></h1>
-        <p class="hero-copy">Describe the sound, share a reference, and Sonora will shape an original visual world around it.</p>
+        <p class="hero-copy">Describe the music you want. Sonora will compose an original track and shape a visual world around its mood, rhythm, and energy.</p>
       </section>
 
       <section class="studio-grid" aria-label="Music video studio">
@@ -33,27 +33,22 @@
             <div><span class="section-index">01</span><h2>Set the direction</h2></div>
             <span class="mono-label">INPUT</span>
           </div>
-          <div class="mode-switch" role="tablist" aria-label="Input type">
-            <button class="mode active" data-mode="reference" role="tab">Reference URL</button>
-            <button class="mode" data-mode="brief" role="tab">Creative brief</button>
+          <div class="input-wrap" id="brief-input">
+            <label for="brief-text">What music should Sonora generate?</label>
+            <textarea id="brief-text" rows="3" placeholder="A warm acoustic indie-pop song, brushed drums, fingerpicked guitar, intimate vocals, sunset road-trip energy..." spellcheck="true"></textarea>
+            <small>Describe genre, instruments, tempo, mood, vocals, language, or story.</small>
           </div>
           <div class="input-wrap" id="reference-input">
-            <label for="source-input">YouTube music video URL</label>
-            <div class="field-with-icon"><span class="play-icon">▶</span><input id="source-input" type="url" placeholder="https://youtube.com/watch?v=..." autocomplete="off" /><span class="field-status">↗</span></div>
-            <small>URL mode creates an original score from the link as inspiration. YouTube does not expose its waveform here.</small>
-            <div class="audio-source-row"><label for="audio-source">Optional source audio you own or are cleared to remix</label><input id="audio-source" type="file" accept="audio/*" /><small id="audio-file-status">No source audio selected</small></div>
-          </div>
-          <div class="input-wrap hidden" id="brief-input">
-            <label for="brief-text">What should it feel like?</label>
-            <textarea id="brief-text" rows="3" placeholder="A dreamy late-night drive through Mumbai, violet neon, slow bass..." spellcheck="true"></textarea>
-            <small>Include mood, genre, colors, location, or story ideas.</small>
+            <label for="source-input">Optional YouTube reference</label>
+            <div class="field-with-icon"><span class="play-icon">▶</span><input id="source-input" type="url" placeholder="Paste a reference for mood inspiration" autocomplete="off" /><span class="field-status">↗</span></div>
+            <small>Sonora uses the reference for broad inspiration. It does not copy or download the source track.</small>
           </div>
           <div class="quick-tags" aria-label="Quick creative directions">
             <button data-tag="cinematic">Cinematic</button><button data-tag="dreamy">Dreamy</button><button data-tag="high energy">High energy</button><button data-tag="minimal">Minimal</button>
           </div>
           <div class="direction-row"><div><span class="row-label">OUTPUT</span><strong id="format-label">YouTube Short · 9:16</strong></div><button class="format-toggle" id="format-toggle">Switch to 16:9 <span>→</span></button></div>
-          <button class="primary-button" id="generate-button"><span class="button-icon">✦</span> Build my visual world <span class="arrow">↗</span></button>
-          <p class="build-status" id="build-status" aria-live="polite">Ready — add a YouTube URL or creative brief.</p>
+          <button class="primary-button" id="generate-button"><span class="button-icon">✦</span> Generate my music video <span class="arrow">↗</span></button>
+          <p class="build-status" id="build-status" aria-live="polite">Ready — describe the music you want.</p>
         </div>
 
         <div class="preview-panel panel">
@@ -74,6 +69,6 @@
       </section>
     </main>
     <footer><span>SONORA © 2026</span><span>Original visuals · Human approval required</span><span>Built for the open creative web</span></footer>
-    <script src="app.js?v=source-remix-v3"></script>
+    <script src="app.js?v=prompt-first-v1"></script>
   </body>
 </html>
