@@ -61,22 +61,31 @@ function waitForGoogle() {
 }
 
 async function connectYouTube() {
+  $('connect-button').textContent = 'Loading Google sign-in…';
+  $('connect-button').disabled = true;
   const google = await waitForGoogle();
   tokenClient ||= google.accounts.oauth2.initTokenClient({
     client_id: YOUTUBE_CLIENT_ID,
     scope: YOUTUBE_SCOPE,
     callback: async (response) => {
-      if (response.error) throw new Error(response.error_description || response.error);
-      state.accessToken = response.access_token;
-      const channelResponse = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', { headers: { Authorization: `Bearer ${state.accessToken}` } });
-      const channelData = await channelResponse.json();
-      if (!channelResponse.ok || !channelData.items?.length) throw new Error(channelData.error?.message || 'No YouTube channel was found for this Google account.');
-      state.channelTitle = channelData.items[0].snippet.title;
-      state.connected = true;
-      $('connect-button').innerHTML = `YouTube: ${state.channelTitle} <span>✓</span>`;
-      $('connect-button').style.color = 'var(--accent)';
-      $('publish-button').disabled = !state.generated;
-      $('publish-button').textContent = state.generated ? 'Upload private draft ↗' : 'Build a draft first';
+      try {
+        if (response.error) throw new Error(response.error_description || response.error);
+        state.accessToken = response.access_token;
+        const channelResponse = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', { headers: { Authorization: `Bearer ${state.accessToken}` } });
+        const channelData = await channelResponse.json();
+        if (!channelResponse.ok || !channelData.items?.length) throw new Error(channelData.error?.message || 'No YouTube channel was found for this Google account.');
+        state.channelTitle = channelData.items[0].snippet.title;
+        state.connected = true;
+        $('connect-button').innerHTML = `YouTube: ${state.channelTitle} <span>✓</span>`;
+        $('connect-button').style.color = 'var(--accent)';
+        $('publish-button').disabled = !state.generated;
+        $('publish-button').textContent = state.generated ? 'Upload private draft ↗' : 'Build a draft first';
+      } catch (error) {
+        $('connect-button').disabled = false;
+        $('connect-button').textContent = 'Connect YouTube ↗';
+        $('connect-button').title = error.message;
+        $('draft-pill').textContent = 'AUTH NEEDED';
+      }
     },
   });
   tokenClient.requestAccessToken({ prompt: 'consent' });
@@ -136,7 +145,8 @@ $('generate-button').addEventListener('click', async () => {
 
 $('connect-button').addEventListener('click', () => {
   connectYouTube().catch((error) => {
-    $('connect-button').textContent = 'Connect YouTube ↗';
+    $('connect-button').disabled = false;
+    $('connect-button').textContent = 'Google sign-in unavailable ↻';
     $('connect-button').title = error.message;
     $('draft-pill').textContent = 'AUTH NEEDED';
   });
