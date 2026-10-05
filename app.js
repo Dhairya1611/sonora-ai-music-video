@@ -58,7 +58,8 @@ function inferMusicAnalysis(input) {
 function demoAnalysis(input) {
   const analysis = inferMusicAnalysis(input);
   const dreamy = analysis.mood === 'dreamy';
-  return { provider: 'demo', title: dreamy ? 'A softer kind of blue' : 'Neon after rain', subtitle: `${analysis.genre} · ${analysis.tempo} BPM · ${analysis.instruments.slice(0, 2).join(' + ')}`, analysis, scenes: (dreamy ? scenes.dreamy : scenes.default).map(([, title, description]) => ({ title, description })) };
+  const title = dreamy ? 'A softer kind of blue' : analysis.mood === 'warm' ? 'Woodsmoke in the headlights' : analysis.energy === 'high' ? 'Voltage after dark' : 'Neon after rain';
+  return { provider: 'demo', title, subtitle: `${analysis.genre} · ${analysis.tempo} BPM · ${analysis.instruments.slice(0, 2).join(' + ')}`, analysis, scenes: (dreamy ? scenes.dreamy : scenes.default).map(([, title, description]) => ({ title, description })) };
 }
 
 function setBuildPhase(label, detail = '') {
@@ -515,4 +516,3 @@ $('play-button').addEventListener('click', (event) => {
   event.currentTarget.textContent = event.currentTarget.textContent === '▶' ? 'Ⅱ' : '▶';
 });
 
-renderScenes();
