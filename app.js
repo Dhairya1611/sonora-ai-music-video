@@ -52,6 +52,10 @@ function setBuildPhase(label, detail = '') {
   $('build-status').textContent = detail ? `${label} · ${detail}` : label;
 }
 
+function pause(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function waitForGoogle() {
   return new Promise((resolve, reject) => {
     const started = Date.now();
@@ -138,8 +142,10 @@ $('generate-button').addEventListener('click', async () => {
   button.innerHTML = '<span class="button-icon">◌</span> Building your visual world…';
   setBuildPhase('Phase 1/5 · Input received', 'checking your direction');
   try {
+    await pause(350);
     setBuildPhase('Phase 2/5 · Analyzing', state.mode === 'reference' ? 'reading the public reference' : 'mapping mood and intent');
     const result = await requestAnalysis(input);
+    await pause(650);
     setBuildPhase('Phase 3/5 · Storyboarding', 'arranging four visual scenes');
     $('preview-title').textContent = result.title || 'Neon after rain';
     $('preview-subtitle').textContent = result.subtitle || 'A cinematic study in motion & light';
@@ -149,7 +155,7 @@ $('generate-button').addEventListener('click', async () => {
     setBuildPhase('Phase 4/5 · Rendering preview', 'preparing the visual direction');
     if (state.connected) $('publish-button').disabled = false;
     $('publish-button').textContent = state.connected ? 'Upload private draft ↗' : 'Connect YouTube to upload';
-    await new Promise((resolve) => window.setTimeout(resolve, 450));
+    await pause(700);
     setBuildPhase('Phase 5/5 · Ready', 'review your visual world below');
   } catch (error) {
     $('draft-pill').textContent = 'DEMO MODE';
