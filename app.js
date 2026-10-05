@@ -1,4 +1,7 @@
-const state = { mode: 'reference', format: 'short', connected: false, generated: false };
+const state = { mode: 'reference', format: 'short', connected: false, generated: false, accessToken: null, channelTitle: '' };
+const YOUTUBE_CLIENT_ID = '442084033193-giinlub1bcoh39r5v2ior5nr2aq7oe1r.apps.googleusercontent.com';
+const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
+let tokenClient;
 
 const scenes = {
   default: [
@@ -45,6 +48,40 @@ function demoAnalysis(input) {
   return { provider: 'demo', title: dreamy ? 'A softer kind of blue' : 'Neon after rain', subtitle: dreamy ? 'An ambient visual study in slow motion' : 'A cinematic study in motion & light', scenes: (dreamy ? scenes.dreamy : scenes.default).map(([, title, description]) => ({ title, description })) };
 }
 
+function waitForGoogle() {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const check = () => {
+      if (window.google?.accounts?.oauth2) return resolve(window.google);
+      if (Date.now() - started > 8000) return reject(new Error('Google sign-in could not load. Check your connection and try again.'));
+      window.setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
+async function connectYouTube() {
+  const google = await waitForGoogle();
+  tokenClient ||= google.accounts.oauth2.initTokenClient({
+    client_id: YOUTUBE_CLIENT_ID,
+    scope: YOUTUBE_SCOPE,
+    callback: async (response) => {
+      if (response.error) throw new Error(response.error_description || response.error);
+      state.accessToken = response.access_token;
+      const channelResponse = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', { headers: { Authorization: `Bearer ${state.accessToken}` } });
+      const channelData = await channelResponse.json();
+      if (!channelResponse.ok || !channelData.items?.length) throw new Error(channelData.error?.message || 'No YouTube channel was found for this Google account.');
+      state.channelTitle = channelData.items[0].snippet.title;
+      state.connected = true;
+      $('connect-button').innerHTML = `YouTube: ${state.channelTitle} <span>✓</span>`;
+      $('connect-button').style.color = 'var(--accent)';
+      $('publish-button').disabled = !state.generated;
+      $('publish-button').textContent = state.generated ? 'Upload private draft ↗' : 'Build a draft first';
+    },
+  });
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
 async function requestAnalysis(input) {
   // GitHub Pages is static hosting, so never call the missing server route there.
   if (window.location.hostname.endsWith('github.io')) return demoAnalysis(input);
@@ -86,6 +123,8 @@ $('generate-button').addEventListener('click', async () => {
     $('draft-pill').textContent = 'DRAFT 02';
     if (Array.isArray(result.scenes) && result.scenes.length) $('scene-list').innerHTML = result.scenes.map((scene, index) => `<article class="scene"><span class="scene-number">0${index + 1} / 04</span><strong>${scene.title}</strong><p>${scene.description}</p></article>`).join('');
     state.generated = true;
+    if (state.connected) $('publish-button').disabled = false;
+    $('publish-button').textContent = state.connected ? 'Upload private draft ↗' : 'Connect YouTube to upload';
   } catch (error) {
     $('draft-pill').textContent = 'DEMO MODE';
     $('draft-pill').title = error.message;
@@ -96,14 +135,71 @@ $('generate-button').addEventListener('click', async () => {
 });
 
 $('connect-button').addEventListener('click', () => {
-  $('connect-button').textContent = 'OAuth setup required ↗';
-  $('connect-button').title = 'YouTube OAuth is not configured in this GitHub Pages demo. No Google account has been connected.';
+  connectYouTube().catch((error) => {
+    $('connect-button').textContent = 'Connect YouTube ↗';
+    $('connect-button').title = error.message;
+    $('draft-pill').textContent = 'AUTH NEEDED';
+  });
 });
 
-$('publish-button').addEventListener('click', () => {
-  if (!state.connected) return;
-  $('publish-button').textContent = 'Upload queued · Demo mode';
-  $('publish-button').style.color = 'var(--accent)';
+function canvasVideo(title, format) {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = format === 'short' ? 720 : 1280;
+    canvas.height = format === 'short' ? 1280 : 720;
+    const context = canvas.getContext('2d');
+    const stream = canvas.captureStream(30);
+    const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find((candidate) => MediaRecorder.isTypeSupported(candidate));
+    if (!mime) return reject(new Error('This browser cannot render a demo video.'));
+    const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_500_000 });
+    const chunks = [];
+    recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
+    recorder.onerror = () => reject(new Error('Video rendering failed.'));
+    recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
+    const started = performance.now();
+    const draw = (now) => {
+      const progress = Math.min((now - started) / 6000, 1);
+      const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, '#17174b'); gradient.addColorStop(.48, '#6c3f88'); gradient.addColorStop(1, '#f0a16e');
+      context.fillStyle = gradient; context.fillRect(0, 0, canvas.width, canvas.height);
+      context.globalAlpha = .22; context.fillStyle = '#d9f55a';
+      context.beginPath(); context.arc(canvas.width * (.73 - progress * .12), canvas.height * .28, canvas.width * .12, 0, Math.PI * 2); context.fill();
+      context.globalAlpha = 1; context.fillStyle = '#f5f1e8'; context.textAlign = 'center';
+      context.font = `700 ${Math.round(canvas.width / 14)}px Manrope, sans-serif`; context.fillText(title, canvas.width / 2, canvas.height * .72);
+      context.font = `400 ${Math.round(canvas.width / 42)}px DM Mono, monospace`; context.fillStyle = '#d9f55a'; context.fillText('SONORA / ORIGINAL VISUAL STUDY', canvas.width / 2, canvas.height * .78);
+      if (progress < 1) requestAnimationFrame(draw); else recorder.stop();
+    };
+    recorder.start(); requestAnimationFrame(draw);
+  });
+}
+
+async function uploadToYouTube(blob) {
+  const metadata = { snippet: { title: $('preview-title').textContent, description: 'Original visual study created with Sonora AI. Generated from an original creative direction.', categoryId: '10' }, status: { privacyStatus: 'private', selfDeclaredMadeForKids: false } };
+  const init = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', { method: 'POST', headers: { Authorization: `Bearer ${state.accessToken}`, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': blob.type, 'X-Upload-Content-Length': String(blob.size) }, body: JSON.stringify(metadata) });
+  if (!init.ok) { const error = await init.json().catch(() => ({})); throw new Error(error.error?.message || `YouTube upload could not start (${init.status}).`); }
+  const location = init.headers.get('Location');
+  if (!location) throw new Error('YouTube did not return an upload URL.');
+  const upload = await fetch(location, { method: 'PUT', headers: { Authorization: `Bearer ${state.accessToken}`, 'Content-Type': blob.type }, body: blob });
+  const result = await upload.json().catch(() => ({}));
+  if (!upload.ok) throw new Error(result.error?.message || `YouTube upload failed (${upload.status}).`);
+  return result;
+}
+
+$('publish-button').addEventListener('click', async () => {
+  if (!state.connected || !state.generated) return;
+  const button = $('publish-button');
+  button.disabled = true; button.textContent = 'Rendering private draft…'; $('draft-pill').textContent = 'RENDERING';
+  try {
+    const blob = await canvasVideo($('preview-title').textContent, state.format);
+    button.textContent = 'Uploading to YouTube…'; $('draft-pill').textContent = 'UPLOADING';
+    const result = await uploadToYouTube(blob);
+    const videoId = result.id;
+    $('draft-pill').textContent = 'UPLOADED PRIVATE';
+    button.textContent = 'Open private upload ↗'; button.disabled = false;
+    button.onclick = () => window.open(`https://youtu.be/${videoId}`, '_blank', 'noopener');
+  } catch (error) {
+    $('draft-pill').textContent = 'UPLOAD FAILED'; $('draft-pill').title = error.message; button.textContent = 'Retry private upload ↗'; button.disabled = false;
+  }
 });
 
 $('play-button').addEventListener('click', (event) => {
