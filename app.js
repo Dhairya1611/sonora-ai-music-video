@@ -147,6 +147,7 @@ $('generate-button').addEventListener('click', async () => {
     const result = await requestAnalysis(input);
     await pause(650);
     setBuildPhase('Phase 3/5 · Storyboarding', 'arranging four visual scenes');
+    await pause(650);
     $('preview-title').textContent = result.title || 'Neon after rain';
     $('preview-subtitle').textContent = result.subtitle || 'A cinematic study in motion & light';
     $('draft-pill').textContent = 'DRAFT 02';
