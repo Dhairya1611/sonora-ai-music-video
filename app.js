@@ -428,3 +428,54 @@ function canvasVideo(title, format, input, audioContext) {
     };
     const begin = () => {
       if (audioContext.state !== 'running') {
+        stream.getTracks().forEach((track) => track.stop());
+        combinedStream.getTracks().forEach((track) => track.stop());
+        audioContext.close().catch(() => {});
+        reject(new Error('The browser blocked music playback. Click Build again to authorize the audio preview.'));
+        return;
+      }
+      const profile = scheduleMusic(audioContext, audioDestination, input);
+      $('audio-label').textContent = `Original ${profile.name}`;
+      recorder.start();
+      requestAnimationFrame(draw);
+    };
+    if (audioContext.state === 'suspended') audioContext.resume().then(begin).catch(() => reject(new Error('The browser blocked music playback. Click Build again to authorize the audio preview.')));
+    else begin();
+  });
+}
+
+async function uploadToYouTube(blob) {
+  const metadata = { snippet: { title: $('preview-title').textContent, description: 'Original visual study created with Sonora AI. Generated from an original creative direction.', categoryId: '10' }, status: { privacyStatus: 'private', selfDeclaredMadeForKids: false } };
+  const init = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', { method: 'POST', headers: { Authorization: `Bearer ${state.accessToken}`, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': blob.type, 'X-Upload-Content-Length': String(blob.size) }, body: JSON.stringify(metadata) });
+  if (!init.ok) { const error = await init.json().catch(() => ({})); throw new Error(error.error?.message || `YouTube upload could not start (${init.status}).`); }
+  const location = init.headers.get('Location');
+  if (!location) throw new Error('YouTube did not return an upload URL.');
+  const upload = await fetch(location, { method: 'PUT', headers: { Authorization: `Bearer ${state.accessToken}`, 'Content-Type': blob.type }, body: blob });
+  const result = await upload.json().catch(() => ({}));
+  if (!upload.ok) throw new Error(result.error?.message || `YouTube upload failed (${upload.status}).`);
+  return result;
+}
+
+$('publish-button').addEventListener('click', async () => {
+  if (!state.connected || !state.generated) return;
+  const button = $('publish-button');
+  button.disabled = true; button.textContent = 'Rendering private draft…'; $('draft-pill').textContent = 'RENDERING';
+  try {
+    const blob = state.videoBlob;
+    if (!blob) throw new Error('Build the music preview before uploading.');
+    button.textContent = 'Uploading to YouTube…'; $('draft-pill').textContent = 'UPLOADING';
+    const result = await uploadToYouTube(blob);
+    const videoId = result.id;
+    $('draft-pill').textContent = 'UPLOADED PRIVATE';
+    button.textContent = 'Open private upload ↗'; button.disabled = false;
+    button.onclick = () => window.open(`https://youtu.be/${videoId}`, '_blank', 'noopener');
+  } catch (error) {
+    $('draft-pill').textContent = 'UPLOAD FAILED'; $('draft-pill').title = error.message; button.textContent = 'Retry private upload ↗'; button.disabled = false;
+  }
+});
+
+$('play-button').addEventListener('click', (event) => {
+  event.currentTarget.textContent = event.currentTarget.textContent === '▶' ? 'Ⅱ' : '▶';
+});
+
+renderScenes();
