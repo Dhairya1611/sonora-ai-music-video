@@ -1,4 +1,4 @@
-const state = { mode: 'reference', format: 'short', connected: false, generated: false, accessToken: null, channelTitle: '' };
+const state = { mode: 'reference', format: 'short', connected: false, generated: false, accessToken: null, channelTitle: '', videoBlob: null, previewUrl: '' };
 const YOUTUBE_CLIENT_ID = '442084033193-giinlub1bcoh39r5v2ior5nr2aq7oe1r.apps.googleusercontent.com';
 const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
 let tokenClient;
@@ -154,6 +154,12 @@ $('generate-button').addEventListener('click', async () => {
     if (Array.isArray(result.scenes) && result.scenes.length) $('scene-list').innerHTML = result.scenes.map((scene, index) => `<article class="scene"><span class="scene-number">0${index + 1} / 04</span><strong>${scene.title}</strong><p>${scene.description}</p></article>`).join('');
     state.generated = true;
     setBuildPhase('Phase 4/5 · Rendering preview', 'preparing the visual direction');
+    state.videoBlob = await canvasVideo($('preview-title').textContent, state.format);
+    if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+    state.previewUrl = URL.createObjectURL(state.videoBlob);
+    $('preview-video').src = state.previewUrl;
+    $('preview-video').classList.add('ready');
+    $('visual-preview').classList.add('has-video');
     if (state.connected) $('publish-button').disabled = false;
     $('publish-button').textContent = state.connected ? 'Upload private draft ↗' : 'Connect YouTube to upload';
     await pause(700);
@@ -225,7 +231,7 @@ $('publish-button').addEventListener('click', async () => {
   const button = $('publish-button');
   button.disabled = true; button.textContent = 'Rendering private draft…'; $('draft-pill').textContent = 'RENDERING';
   try {
-    const blob = await canvasVideo($('preview-title').textContent, state.format);
+    const blob = state.videoBlob || await canvasVideo($('preview-title').textContent, state.format);
     button.textContent = 'Uploading to YouTube…'; $('draft-pill').textContent = 'UPLOADING';
     const result = await uploadToYouTube(blob);
     const videoId = result.id;
