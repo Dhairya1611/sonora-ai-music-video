@@ -27,11 +27,24 @@ const demoScenes = [
 ];
 
 function demoResult(input, format) {
+  const direction = input.toLowerCase();
+  const dreamy = /dream|ambient|soft|ethereal|calm|lo-fi/.test(direction);
+  const energetic = /dance|edm|house|techno|upbeat|energetic|club|trap|hip.?hop/.test(direction);
+  const acoustic = /acoustic|guitar|piano|folk|organic|indie|jazz|strings/.test(direction);
+  const analysis = {
+    genre: energetic ? 'electronic' : acoustic ? 'acoustic indie' : dreamy ? 'ambient pop' : 'cinematic pop',
+    mood: dreamy ? 'dreamy' : energetic ? 'driving' : acoustic ? 'warm' : 'cinematic',
+    energy: energetic ? 'high' : dreamy ? 'low' : 'building',
+    tempo: energetic ? 122 : dreamy ? 82 : acoustic ? 96 : 108,
+    instruments: acoustic ? ['fingerpicked acoustic guitar', 'warm piano', 'brush drums', 'round bass'] : energetic ? ['analog synth bass', 'bright pluck', 'four-on-the-floor kick', 'claps and hi-hats'] : ['felt piano', 'soft strings', 'sub bass', 'textured drums'],
+    palette: ['violet', 'warm amber', 'midnight blue'],
+    visualThemes: ['motion', 'light', 'atmosphere'],
+  };
   return {
     provider: 'demo',
-    title: input.toLowerCase().includes('dream') ? 'A softer kind of blue' : 'Neon after rain',
+    title: dreamy ? 'A softer kind of blue' : acoustic ? 'Woodsmoke in the headlights' : energetic ? 'Voltage after dark' : 'Neon after rain',
     subtitle: 'A cinematic study in motion & light',
-    analysis: { mood: 'cinematic', energy: 'building', palette: ['violet', 'warm amber', 'midnight blue'], visualThemes: ['rain', 'city reflections', 'slow motion'] },
+    analysis,
     scenes: demoScenes,
     format,
   };
@@ -43,7 +56,7 @@ function extractJson(text) {
   return JSON.parse(candidate);
 }
 
-async function analyzeWithGroq(input, format) {
+async function analyzeWithGroq(input, format, reference = '') {
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
@@ -53,7 +66,7 @@ async function analyzeWithGroq(input, format) {
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: 'You are a music-video creative director. Return only valid JSON. Create original concepts inspired by broad musical qualities, never copy a referenced video.' },
-        { role: 'user', content: `Create an original visual treatment for this music direction or reference: ${input}\nOutput format: ${format === 'short' ? 'vertical 9:16 YouTube Short' : 'landscape 16:9 music video'}. Return JSON with title, subtitle, analysis {mood, energy, palette, visualThemes}, and scenes (exactly 4 objects with title and description).` },
+        { role: 'user', content: `Create an original music and visual treatment. Primary music brief: ${input}\nOptional reference URL for broad inspiration only: ${reference || 'none'}. Never copy the reference audio, lyrics, melody, or shots. Output format: ${format === 'short' ? 'vertical 9:16 YouTube Short' : 'landscape 16:9 music video'}. Return JSON with title, subtitle, analysis {genre, mood, energy, tempo, instruments, palette, visualThemes}, and scenes (exactly 4 objects with title and description). Choose tempo as an integer BPM from 70 to 150 and instruments as an array of 3 to 5 concrete instruments or production elements.` },
       ],
     }),
   });
@@ -72,8 +85,9 @@ async function handleAnalyze(request, response) {
     });
     const input = String(body.input || '').trim();
     if (!input) throw new Error('Add a reference URL or creative brief first.');
+    const reference = String(body.reference || '').trim();
     const format = body.format === 'wide' ? 'wide' : 'short';
-    const result = process.env.GROQ_API_KEY ? await analyzeWithGroq(input, format) : demoResult(input, format);
+    const result = process.env.GROQ_API_KEY ? await analyzeWithGroq(input, format, reference) : demoResult(input, format);
     response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     response.end(JSON.stringify(result));
   } catch (error) {
