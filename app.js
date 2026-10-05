@@ -1,4 +1,4 @@
-const state = { mode: 'reference', format: 'short', connected: false, generated: false, accessToken: null, channelTitle: '', videoBlob: null, previewUrl: '' };
+const state = { mode: 'reference', format: 'short', connected: false, generated: false, accessToken: null, channelTitle: '', videoBlob: null, previewUrl: '', sourceAudioFile: null, sourceAudioProfile: null };
 const PREVIEW_SECONDS = 10;
 const YOUTUBE_CLIENT_ID = '442084033193-giinlub1bcoh39r5v2ior5nr2aq7oe1r.apps.googleusercontent.com';
 const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
@@ -42,6 +42,28 @@ $('format-toggle').addEventListener('click', () => {
   state.format = state.format === 'short' ? 'wide' : 'short';
   $('format-label').textContent = state.format === 'short' ? 'YouTube Short · 9:16' : 'Music video · 16:9';
   $('format-toggle').innerHTML = state.format === 'short' ? 'Switch to 16:9 <span>→</span>' : 'Switch to 9:16 <span>→</span>';
+});
+
+$('audio-source').addEventListener('change', async (event) => {
+  const file = event.currentTarget.files?.[0];
+  if (!file) {
+    state.sourceAudioFile = null;
+    state.sourceAudioProfile = null;
+    $('audio-file-status').textContent = 'No source audio selected';
+    return;
+  }
+  try {
+    $('audio-file-status').textContent = 'Analyzing waveform…';
+    state.sourceAudioProfile = await analyzeSourceAudio(file);
+    state.sourceAudioFile = file;
+    $('audio-file-status').textContent = `${file.name} · ${state.sourceAudioProfile.bpm} BPM · waveform mapped`;
+  } catch (error) {
+    state.sourceAudioFile = null;
+    state.sourceAudioProfile = null;
+    $('audio-file-status').textContent = 'Audio could not be decoded';
+    event.currentTarget.value = '';
+    $('build-status').textContent = `Source audio error · ${error.message}`;
+  }
 });
 
 function demoAnalysis(input) {
@@ -148,7 +170,7 @@ $('generate-button').addEventListener('click', async () => {
     audioContext = createMusicContext();
     setBuildPhase('Phase 1/5 · Input received', 'checking your direction');
     await pause(350);
-    setBuildPhase('Phase 2/5 · Analyzing', state.mode === 'reference' ? 'reading the public reference' : 'mapping mood and intent');
+    setBuildPhase('Phase 2/5 · Analyzing', state.sourceAudioProfile ? 'mapping waveform, energy and tempo' : state.mode === 'reference' ? 'using the URL as creative inspiration' : 'mapping mood and intent');
     const result = await requestAnalysis(input);
     await pause(650);
     setBuildPhase('Phase 3/5 · Storyboarding', 'arranging four visual scenes');
@@ -158,7 +180,7 @@ $('generate-button').addEventListener('click', async () => {
     $('draft-pill').textContent = 'DRAFT 02';
     if (Array.isArray(result.scenes) && result.scenes.length) $('scene-list').innerHTML = result.scenes.map((scene, index) => `<article class="scene"><span class="scene-number">0${index + 1} / 04</span><strong>${scene.title}</strong><p>${scene.description}</p></article>`).join('');
     setBuildPhase('Phase 4/5 · Rendering preview', 'composing original music + visuals');
-    state.videoBlob = await canvasVideo($('preview-title').textContent, state.format, input, audioContext);
+    state.videoBlob = await canvasVideo($('preview-title').textContent, state.format, input, audioContext, state.sourceAudioProfile);
     state.generated = true;
     if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
     state.previewUrl = URL.createObjectURL(state.videoBlob);
@@ -292,6 +314,48 @@ function midiToFrequency(note) {
   return 440 * (2 ** ((note - 69) / 12));
 }
 
+async function analyzeSourceAudio(file) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error('This browser cannot decode source audio.');
+  const context = new AudioContextClass();
+  try {
+    const decoded = await context.decodeAudioData(await file.arrayBuffer());
+    const channel = decoded.getChannelData(0);
+    const windowCount = 48;
+    const windowSize = Math.max(1, Math.floor(channel.length / windowCount));
+    const waveform = [];
+    for (let windowIndex = 0; windowIndex < windowCount; windowIndex += 1) {
+      const start = windowIndex * windowSize;
+      const end = Math.min(channel.length, start + windowSize);
+      let sum = 0;
+      for (let index = start; index < end; index += 1) sum += channel[index] ** 2;
+      waveform.push(Math.sqrt(sum / Math.max(1, end - start)));
+    }
+    const peak = Math.max(...waveform, 0.0001);
+    const normalizedWaveform = waveform.map((value) => Math.min(1, value / peak));
+    const hop = Math.max(1, Math.floor(decoded.sampleRate * 0.05));
+    const envelope = [];
+    for (let start = 0; start < channel.length; start += hop) {
+      const end = Math.min(channel.length, start + hop);
+      let sum = 0;
+      for (let index = start; index < end; index += 1) sum += channel[index] ** 2;
+      envelope.push(Math.sqrt(sum / Math.max(1, end - start)));
+    }
+    const average = envelope.reduce((sum, value) => sum + value, 0) / Math.max(1, envelope.length);
+    let bestBpm = 100;
+    let bestScore = -Infinity;
+    for (let bpm = 70; bpm <= 150; bpm += 1) {
+      const lag = Math.max(1, Math.round(60 / bpm / 0.05));
+      let score = 0;
+      for (let index = lag; index < envelope.length; index += 1) score += Math.max(0, envelope[index] - average) * Math.max(0, envelope[index - lag] - average);
+      if (score > bestScore) { bestScore = score; bestBpm = bpm; }
+    }
+    return { buffer: decoded, waveform: normalizedWaveform, energy: envelope, bpm: bestBpm, duration: decoded.duration };
+  } finally {
+    await context.close();
+  }
+}
+
 function createReverb(context, output, random) {
   const reverb = context.createConvolver();
   const wet = context.createGain();
@@ -326,7 +390,29 @@ function scheduleKick(context, output, when, volume) {
   oscillator.stop(when + 0.22);
 }
 
-function scheduleMusic(context, destination, input) {
+function scheduleSourceRemix(context, output, sourceProfile, start, random) {
+  const source = context.createBufferSource();
+  const filter = context.createBiquadFilter();
+  const gain = context.createGain();
+  const panner = context.createStereoPanner();
+  source.buffer = sourceProfile.buffer;
+  source.loop = true;
+  source.playbackRate.value = 0.94 + random() * 0.12;
+  source.detune.value = (random() - 0.5) * 80;
+  filter.type = 'lowpass';
+  filter.frequency.value = 2200 + random() * 2600;
+  filter.Q.value = 0.8;
+  gain.gain.value = 0.28;
+  panner.pan.value = random() - 0.5;
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(panner);
+  panner.connect(output);
+  source.start(start, (sourceProfile.duration * random()) % sourceProfile.duration);
+  source.stop(start + PREVIEW_SECONDS + 0.2);
+}
+
+function scheduleMusic(context, destination, input, sourceProfile = null) {
   const random = seededRandom(hashInput(input));
   const direction = input.toLowerCase();
   const profiles = [
@@ -355,6 +441,7 @@ function scheduleMusic(context, destination, input) {
   compressor.release.value = 0.2;
   compressor.connect(destination);
   const reverb = createReverb(context, compressor, random);
+  if (sourceProfile?.buffer) scheduleSourceRemix(context, compressor, sourceProfile, start, random);
   const pad = context.createGain();
   pad.gain.value = profile.kit === 'soft' ? 0.09 : 0.055;
   pad.connect(compressor);
@@ -365,13 +452,14 @@ function scheduleMusic(context, destination, input) {
     const bar = Math.floor(index / 8);
     const chordRoot = root + profile.chord[bar % profile.chord.length];
     const scaleNote = (stepIndex) => profile.scale[(stepIndex + bar) % profile.scale.length];
+    const sourceEnergy = sourceProfile?.energy ? Math.min(1, (sourceProfile.energy[Math.floor((index / steps) * sourceProfile.energy.length)] || 0) * 3) : 0.5;
     if (index % 2 === 0) {
-      scheduleTone(context, compressor, midiToFrequency(chordRoot - 12), when, beat * 0.42, 0.075, 'sine', reverb, (random() - 0.5) * 0.25);
+      scheduleTone(context, compressor, midiToFrequency(chordRoot - 12), when, beat * 0.42, 0.055 + sourceEnergy * 0.045, 'sine', reverb, (random() - 0.5) * 0.25);
       scheduleTone(context, compressor, midiToFrequency(chordRoot + 12), when, beat * 0.25, 0.035, 'triangle', reverb, (random() - 0.5) * 0.45);
     }
     const kickHit = profile.kit === 'groove' ? index % 4 === 0 || index % 8 === 6 : profile.kit === 'soft' ? index % 8 === 0 : profile.kit === 'wide' ? index % 4 === 0 || index % 8 === 3 : index % 4 === 0;
     if (kickHit) {
-      scheduleKick(context, compressor, when, profile.kit === 'groove' ? 0.34 : 0.25);
+      scheduleKick(context, compressor, when, (profile.kit === 'groove' ? 0.3 : 0.2) + sourceEnergy * 0.12);
       scheduleTone(context, compressor, midiToFrequency(chordRoot + 12), when + step * 0.03, beat * 0.8, 0.028, 'sawtooth', reverb, -0.2);
     }
     const snareHit = profile.kit === 'soft' ? index % 8 === 6 : profile.kit === 'wide' ? index % 8 === 4 : index % 8 === 4 || (profile.kit === 'groove' && index % 8 === 7);
@@ -425,11 +513,12 @@ function canvasVideo(title, format, input, audioContext) {
     const started = performance.now();
     const draw = (now) => {
       const progress = Math.min((now - started) / (PREVIEW_SECONDS * 1000), 1);
+      const sourceWave = sourceProfile?.waveform?.[Math.min(sourceProfile.waveform.length - 1, Math.floor(progress * sourceProfile.waveform.length))] || 0.45;
       const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
       gradient.addColorStop(0, '#17174b'); gradient.addColorStop(.48, '#6c3f88'); gradient.addColorStop(1, '#f0a16e');
       context.fillStyle = gradient; context.fillRect(0, 0, canvas.width, canvas.height);
       context.globalAlpha = .22; context.fillStyle = '#d9f55a';
-      context.beginPath(); context.arc(canvas.width * (.73 - progress * .12), canvas.height * .28, canvas.width * .12, 0, Math.PI * 2); context.fill();
+      context.beginPath(); context.arc(canvas.width * (.73 - progress * .12), canvas.height * .28, canvas.width * (.08 + sourceWave * .09), 0, Math.PI * 2); context.fill();
       context.globalAlpha = 1; context.fillStyle = '#f5f1e8'; context.textAlign = 'center';
       context.font = `700 ${Math.round(canvas.width / 14)}px Manrope, sans-serif`; context.fillText(title, canvas.width / 2, canvas.height * .72);
       context.font = `400 ${Math.round(canvas.width / 42)}px DM Mono, monospace`; context.fillStyle = '#d9f55a'; context.fillText('SONORA / ORIGINAL VISUAL STUDY', canvas.width / 2, canvas.height * .78);
@@ -439,52 +528,3 @@ function canvasVideo(title, format, input, audioContext) {
       if (audioContext.state !== 'running') {
         stream.getTracks().forEach((track) => track.stop());
         combinedStream.getTracks().forEach((track) => track.stop());
-        audioContext.close().catch(() => {});
-        reject(new Error('The browser blocked music playback. Click Build again to authorize the audio preview.'));
-        return;
-      }
-      const profile = scheduleMusic(audioContext, audioDestination, input);
-      $('audio-label').textContent = `Original ${profile.name} · ${profile.keyName} · ${profile.tempo} BPM`;
-      recorder.start();
-      requestAnimationFrame(draw);
-    };
-    if (audioContext.state === 'suspended') audioContext.resume().then(begin).catch(() => reject(new Error('The browser blocked music playback. Click Build again to authorize the audio preview.')));
-    else begin();
-  });
-}
-
-async function uploadToYouTube(blob) {
-  const metadata = { snippet: { title: $('preview-title').textContent, description: 'Original visual study created with Sonora AI. Generated from an original creative direction.', categoryId: '10' }, status: { privacyStatus: 'private', selfDeclaredMadeForKids: false } };
-  const init = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', { method: 'POST', headers: { Authorization: `Bearer ${state.accessToken}`, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': blob.type, 'X-Upload-Content-Length': String(blob.size) }, body: JSON.stringify(metadata) });
-  if (!init.ok) { const error = await init.json().catch(() => ({})); throw new Error(error.error?.message || `YouTube upload could not start (${init.status}).`); }
-  const location = init.headers.get('Location');
-  if (!location) throw new Error('YouTube did not return an upload URL.');
-  const upload = await fetch(location, { method: 'PUT', headers: { Authorization: `Bearer ${state.accessToken}`, 'Content-Type': blob.type }, body: blob });
-  const result = await upload.json().catch(() => ({}));
-  if (!upload.ok) throw new Error(result.error?.message || `YouTube upload failed (${upload.status}).`);
-  return result;
-}
-
-$('publish-button').addEventListener('click', async () => {
-  if (!state.connected || !state.generated) return;
-  const button = $('publish-button');
-  button.disabled = true; button.textContent = 'Rendering private draft…'; $('draft-pill').textContent = 'RENDERING';
-  try {
-    const blob = state.videoBlob;
-    if (!blob) throw new Error('Build the music preview before uploading.');
-    button.textContent = 'Uploading to YouTube…'; $('draft-pill').textContent = 'UPLOADING';
-    const result = await uploadToYouTube(blob);
-    const videoId = result.id;
-    $('draft-pill').textContent = 'UPLOADED PRIVATE';
-    button.textContent = 'Open private upload ↗'; button.disabled = false;
-    button.onclick = () => window.open(`https://youtu.be/${videoId}`, '_blank', 'noopener');
-  } catch (error) {
-    $('draft-pill').textContent = 'UPLOAD FAILED'; $('draft-pill').title = error.message; button.textContent = 'Retry private upload ↗'; button.disabled = false;
-  }
-});
-
-$('play-button').addEventListener('click', (event) => {
-  event.currentTarget.textContent = event.currentTarget.textContent === '▶' ? 'Ⅱ' : '▶';
-});
-
-renderScenes();
