@@ -140,8 +140,12 @@ $('generate-button').addEventListener('click', async () => {
   }
   button.disabled = true;
   button.innerHTML = '<span class="button-icon">◌</span> Building your visual world…';
-  setBuildPhase('Phase 1/5 · Input received', 'checking your direction');
+  let audioContext;
   try {
+    // Create the audio context directly from the button gesture. This lets the
+    // browser authorize the generated music for the MediaRecorder stream.
+    audioContext = createMusicContext();
+    setBuildPhase('Phase 1/5 · Input received', 'checking your direction');
     await pause(350);
     setBuildPhase('Phase 2/5 · Analyzing', state.mode === 'reference' ? 'reading the public reference' : 'mapping mood and intent');
     const result = await requestAnalysis(input);
@@ -152,9 +156,9 @@ $('generate-button').addEventListener('click', async () => {
     $('preview-subtitle').textContent = result.subtitle || 'A cinematic study in motion & light';
     $('draft-pill').textContent = 'DRAFT 02';
     if (Array.isArray(result.scenes) && result.scenes.length) $('scene-list').innerHTML = result.scenes.map((scene, index) => `<article class="scene"><span class="scene-number">0${index + 1} / 04</span><strong>${scene.title}</strong><p>${scene.description}</p></article>`).join('');
+    setBuildPhase('Phase 4/5 · Rendering preview', 'composing original music + visuals');
+    state.videoBlob = await canvasVideo($('preview-title').textContent, state.format, input, audioContext);
     state.generated = true;
-    setBuildPhase('Phase 4/5 · Rendering preview', 'preparing the visual direction');
-    state.videoBlob = await canvasVideo($('preview-title').textContent, state.format);
     if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
     state.previewUrl = URL.createObjectURL(state.videoBlob);
     $('preview-video').src = state.previewUrl;
@@ -168,6 +172,7 @@ $('generate-button').addEventListener('click', async () => {
     $('draft-pill').textContent = 'DEMO MODE';
     $('draft-pill').title = error.message;
     setBuildPhase('Build stopped', error.message);
+    if (audioContext && audioContext.state !== 'closed') audioContext.close().catch(() => {});
   } finally {
     button.disabled = false;
     button.innerHTML = original;
@@ -183,7 +188,86 @@ $('connect-button').addEventListener('click', () => {
   });
 });
 
-function canvasVideo(title, format) {
+function createMusicContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error('This browser cannot synthesize the music preview.');
+  return new AudioContextClass();
+}
+
+function scheduleTone(context, output, frequency, when, duration, volume, type = 'sine') {
+  const oscillator = context.createOscillator();
+  const envelope = context.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, when);
+  envelope.gain.setValueAtTime(0.0001, when);
+  envelope.gain.exponentialRampToValueAtTime(volume, when + Math.min(0.035, duration / 3));
+  envelope.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+  oscillator.connect(envelope);
+  envelope.connect(output);
+  oscillator.start(when);
+  oscillator.stop(when + duration + 0.05);
+}
+
+function scheduleNoise(context, output, when, duration, volume, highpass = 0) {
+  const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * duration), context.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let index = 0; index < data.length; index += 1) data[index] = Math.random() * 2 - 1;
+  const source = context.createBufferSource();
+  const envelope = context.createGain();
+  source.buffer = buffer;
+  envelope.gain.setValueAtTime(0.0001, when);
+  envelope.gain.exponentialRampToValueAtTime(volume, when + 0.006);
+  envelope.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+  if (highpass) {
+    const filter = context.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = highpass;
+    source.connect(filter);
+    filter.connect(envelope);
+  } else source.connect(envelope);
+  envelope.connect(output);
+  source.start(when);
+  source.stop(when + duration + 0.02);
+}
+
+function scheduleMusic(context, destination, input) {
+  const direction = input.toLowerCase();
+  const dreamy = direction.includes('dream') || direction.includes('ambient') || direction.includes('soft');
+  const tempo = dreamy ? 92 : 112;
+  const beat = 60 / tempo;
+  const step = beat / 2;
+  const start = context.currentTime + 0.08;
+  const length = 6;
+  const steps = Math.ceil(length / step);
+  const roots = dreamy ? [220, 174.61, 196, 146.83] : [220, 261.63, 293.66, 196];
+  const lead = dreamy ? [440, 523.25, 659.25, 587.33, 523.25, 440] : [440, 523.25, 587.33, 659.25, 783.99, 659.25];
+  const compressor = context.createDynamicsCompressor();
+  compressor.threshold.value = -24;
+  compressor.knee.value = 18;
+  compressor.ratio.value = 8;
+  compressor.attack.value = 0.003;
+  compressor.release.value = 0.2;
+  compressor.connect(destination);
+
+  for (let index = 0; index < steps; index += 1) {
+    const when = start + index * step;
+    const bar = Math.floor(index / 8);
+    const root = roots[bar % roots.length];
+    if (index % 2 === 0) {
+      scheduleTone(context, compressor, root / 2, when, beat * 0.42, dreamy ? 0.075 : 0.095, 'sine');
+      scheduleTone(context, compressor, root, when, beat * 0.24, dreamy ? 0.035 : 0.045, 'triangle');
+    }
+    if (index % 4 === 0) {
+      scheduleTone(context, compressor, 72, when, 0.16, 0.25, 'sine');
+      scheduleTone(context, compressor, root * 2, when + step * 0.03, beat * 0.8, 0.022, 'sawtooth');
+    }
+    if (index % 8 === 4) scheduleNoise(context, compressor, when, 0.15, 0.075, 900);
+    scheduleNoise(context, compressor, when + step * 0.15, 0.045, 0.018, 4200);
+    if (index % 2 === 0) scheduleTone(context, compressor, lead[(index / 2) % lead.length], when, beat * 0.33, dreamy ? 0.045 : 0.055, 'triangle');
+  }
+}
+
+function canvasVideo(title, format, input, audioContext) {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
     canvas.width = format === 'short' ? 720 : 1280;
@@ -192,11 +276,21 @@ function canvasVideo(title, format) {
     const stream = canvas.captureStream(30);
     const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find((candidate) => MediaRecorder.isTypeSupported(candidate));
     if (!mime) return reject(new Error('This browser cannot render a demo video.'));
-    const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_500_000 });
+    if (!audioContext) return reject(new Error('Music synthesis is unavailable for this preview.'));
+    const audioDestination = audioContext.createMediaStreamDestination();
+    const audioTracks = audioDestination.stream.getAudioTracks();
+    if (!audioTracks.length) return reject(new Error('The browser could not create an audio track.'));
+    const combinedStream = new MediaStream([...stream.getVideoTracks(), ...audioTracks]);
+    const recorder = new MediaRecorder(combinedStream, { mimeType: mime, videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 128_000 });
     const chunks = [];
     recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
     recorder.onerror = () => reject(new Error('Video rendering failed.'));
-    recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
+    recorder.onstop = () => {
+      stream.getTracks().forEach((track) => track.stop());
+      combinedStream.getTracks().forEach((track) => track.stop());
+      audioContext.close().catch(() => {});
+      resolve(new Blob(chunks, { type: mime }));
+    };
     const started = performance.now();
     const draw = (now) => {
       const progress = Math.min((now - started) / 6000, 1);
@@ -210,7 +304,20 @@ function canvasVideo(title, format) {
       context.font = `400 ${Math.round(canvas.width / 42)}px DM Mono, monospace`; context.fillStyle = '#d9f55a'; context.fillText('SONORA / ORIGINAL VISUAL STUDY', canvas.width / 2, canvas.height * .78);
       if (progress < 1) requestAnimationFrame(draw); else recorder.stop();
     };
-    recorder.start(); requestAnimationFrame(draw);
+    const begin = () => {
+      if (audioContext.state !== 'running') {
+        stream.getTracks().forEach((track) => track.stop());
+        combinedStream.getTracks().forEach((track) => track.stop());
+        audioContext.close().catch(() => {});
+        reject(new Error('The browser blocked music playback. Click Build again to authorize the audio preview.'));
+        return;
+      }
+      scheduleMusic(audioContext, audioDestination, input);
+      recorder.start();
+      requestAnimationFrame(draw);
+    };
+    if (audioContext.state === 'suspended') audioContext.resume().then(begin).catch(() => reject(new Error('The browser blocked music playback. Click Build again to authorize the audio preview.')));
+    else begin();
   });
 }
 
@@ -231,7 +338,8 @@ $('publish-button').addEventListener('click', async () => {
   const button = $('publish-button');
   button.disabled = true; button.textContent = 'Rendering private draft…'; $('draft-pill').textContent = 'RENDERING';
   try {
-    const blob = state.videoBlob || await canvasVideo($('preview-title').textContent, state.format);
+    const blob = state.videoBlob;
+    if (!blob) throw new Error('Build the music preview before uploading.');
     button.textContent = 'Uploading to YouTube…'; $('draft-pill').textContent = 'UPLOADING';
     const result = await uploadToYouTube(blob);
     const videoId = result.id;
