@@ -1,12 +1,13 @@
 # Sonora
 
-Sonora is an AI-directed music video studio prototype. It accepts either a YouTube reference URL or a creative brief, then turns the direction into an original visual storyboard and an upload-ready video workflow.
+Sonora is a prompt-first AI-directed music video studio prototype. The user describes the music they want, may optionally add a YouTube reference for broad inspiration, and receives an original music score, visual storyboard, preview, and upload-ready video workflow.
 
 ## Current milestone
 
 This first milestone includes a dependency-free frontend and a Node server endpoint. It runs in Demo Mode so the experience can be reviewed without API keys, and automatically uses Groq when `GROQ_API_KEY` is configured. The UI already models the core product flow:
 
-- reference URL or creative brief input;
+- a music-generation brief describing genre, instruments, tempo, mood, vocals, and story;
+- an optional YouTube reference used only for broad inspiration;
 - short/landscape output choice;
 - generated preview direction;
 - editable storyboard state;
@@ -22,15 +23,15 @@ createStoryboard(analysis, format) -> scenes[]
 renderVideo(scenes, audio, format) -> videoAsset
 ```
 
-### Primary option: Groq
+### Creative director: Groq
 
-Groq is the preferred first API for the text workflow because its free plan publishes request and token limits and its API is OpenAI-compatible. The planned adapter will use a Groq text model for structured music analysis, storyboard generation, titles, descriptions, and upload metadata. Groq also exposes Whisper models for transcription when the user supplies audio they own or are authorized to process.
+Groq is used as the text creative director because its API is OpenAI-compatible. It turns the user brief and optional reference into structured genre, mood, BPM, instrument, rhythm, visual, title, and storyboard guidance. Groq does not generate the audio waveform itself.
 
 The browser must never receive `GROQ_API_KEY`; requests will go through a server-side endpoint. Demo Mode remains the fallback when no key is configured.
 
-### Other options
+### Audio model path
 
-Hugging Face is a reasonable fallback, but its current free access is limited monthly inference credit, not unlimited generation. AirLLM is a local inference library and can be used behind a local Python service when a suitable GPU/local machine is available. Neither Groq nor AirLLM is, by itself, a complete text-to-music-video renderer. Video rendering will use a separate provider or a local FFmpeg/visual-asset pipeline.
+MusicGen is the aligned open model for text-to-music generation. The current GitHub Pages build uses a no-key browser music renderer so the demo remains functional. A production MusicGen adapter must run server-side or locally; the model is not safe to call with a secret from a static page, and inference availability/limits vary by provider. Hugging Face documents a free tier for Inference Providers, but it is not unlimited generation.
 
 ## Run locally
 
@@ -48,7 +49,7 @@ The repository includes a GitHub Actions workflow at `.github/workflows/pages.ym
 
 ## Planned production integrations
 
-- server-side Hugging Face/local-model adapter for text analysis and storyboard generation;
+- server-side MusicGen/Hugging Face or local AudioCraft adapter for actual AI audio generation;
 - separate video-generation provider or local render pipeline;
 - FFmpeg assembly, audio synchronization, captions, and 9:16/16:9 exports;
 - Google OAuth and YouTube Data API upload with private-by-default publishing;
