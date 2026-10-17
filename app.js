@@ -2,7 +2,8 @@ const state = { type: 'music-video', format: 'short', duration: 30, connected: f
 const PREVIEW_SECONDS = 10;
 const YOUTUBE_CLIENT_ID = '442084033193-giinlub1bcoh39r5v2ior5nr2aq7oe1r.apps.googleusercontent.com';
 const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
-let tokenClient;
+let authRequestTimer;
+let authRequestId = 0;
 
 const typeCopy = {
   'music-video': {
@@ -180,40 +181,67 @@ function waitForGoogle() {
   });
 }
 
-async function connectYouTube() {
+function failYouTubeConnection(error) {
+  state.connected = false;
+  state.accessToken = null;
+  $('connect-button').disabled = false;
+  $('connect-button').textContent = 'Connect YouTube ↗';
+  $('connect-button').style.color = '';
+  $('connect-button').title = error.message;
+  setYouTubeConnectionStatus(`Connection failed: ${error.message}`, 'error');
+}
+
+function connectYouTube() {
   const button = $('connect-button');
+  const requestId = ++authRequestId;
   button.textContent = 'Loading Google sign-in…';
   button.disabled = true;
   button.title = '';
   setYouTubeConnectionStatus('Waiting for Google authorization…');
-  const google = await waitForGoogle();
-  tokenClient ||= google.accounts.oauth2.initTokenClient({
-    client_id: YOUTUBE_CLIENT_ID,
-    scope: YOUTUBE_SCOPE,
-    callback: async (response) => {
-      try {
-        if (response.error) throw new Error(response.error_description || response.error);
-        if (!response.access_token) throw new Error('Google did not return an upload authorization token.');
-        state.accessToken = response.access_token;
-        state.connected = true;
-        button.disabled = false;
-        button.innerHTML = 'YouTube connected <span>✓</span>';
-        button.style.color = 'var(--accent)';
-        setYouTubeConnectionStatus('Upload access authorized for this session.', 'connected');
-        $('publish-button').disabled = true;
-        $('publish-button').textContent = 'Available after a real video is rendered';
-      } catch (error) {
-        state.connected = false;
-        state.accessToken = null;
-        button.disabled = false;
-        button.textContent = 'Connect YouTube ↗';
-        button.style.color = '';
-        button.title = error.message;
-        setYouTubeConnectionStatus(`Connection failed: ${error.message}`, 'error');
-      }
-    },
-  });
-  tokenClient.requestAccessToken({ prompt: 'select_account consent' });
+  const google = window.google?.accounts?.oauth2 ? window.google : null;
+  if (!google) {
+    waitForGoogle().then(() => {
+      if (requestId !== authRequestId) return;
+      button.disabled = false;
+      button.textContent = state.connected ? 'YouTube connected ✓' : 'Connect YouTube ↗';
+      setYouTubeConnectionStatus('Google sign-in is ready. Click Connect YouTube again.');
+    }).catch(failYouTubeConnection);
+    return;
+  }
+  try {
+    const requestClient = google.accounts.oauth2.initTokenClient({
+      client_id: YOUTUBE_CLIENT_ID,
+      scope: YOUTUBE_SCOPE,
+      callback: async (response) => {
+        if (requestId !== authRequestId) return;
+        window.clearTimeout(authRequestTimer);
+        try {
+          if (response.error) throw new Error(response.error_description || response.error);
+          if (!response.access_token) throw new Error('Google did not return an upload authorization token.');
+          state.accessToken = response.access_token;
+          state.connected = true;
+          button.disabled = false;
+          button.innerHTML = 'YouTube connected <span>✓</span>';
+          button.style.color = 'var(--accent)';
+          button.title = '';
+          setYouTubeConnectionStatus('Upload access authorized for this session.', 'connected');
+          $('publish-button').disabled = true;
+          $('publish-button').textContent = 'Available after a real video is rendered';
+        } catch (error) {
+          failYouTubeConnection(error);
+        }
+      },
+    });
+    authRequestTimer = window.setTimeout(() => {
+      if (requestId !== authRequestId) return;
+      authRequestId += 1;
+      failYouTubeConnection(new Error('Google sign-in did not respond. Allow pop-ups for this site, then retry.'));
+    }, 30000);
+    requestClient.requestAccessToken({ prompt: 'select_account consent' });
+  } catch (error) {
+    window.clearTimeout(authRequestTimer);
+    failYouTubeConnection(error);
+  }
 }
 
 async function requestPlan(request) {
@@ -345,15 +373,7 @@ $('download-plan').addEventListener('click', () => {
 });
 
 $('connect-button').addEventListener('click', () => {
-  connectYouTube().catch((error) => {
-    state.connected = false;
-    state.accessToken = null;
-    $('connect-button').disabled = false;
-    $('connect-button').textContent = 'Connect YouTube ↗';
-    $('connect-button').style.color = '';
-    $('connect-button').title = error.message;
-    setYouTubeConnectionStatus(`Could not start Google sign-in: ${error.message}`, 'error');
-  });
+  connectYouTube();
 });
 
 function createMusicContext() {
