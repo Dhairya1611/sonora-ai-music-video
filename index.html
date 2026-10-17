@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#09090d" />
-    <title>Sonora — AI music video studio</title>
+    <title>Sonora — AI story & video studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=prompt-first-v2" />
+    <link rel="stylesheet" href="styles.css?v=creative-studio-v1" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
@@ -16,59 +16,85 @@
     <div class="ambient ambient-two"></div>
     <header class="topbar">
       <a class="brand" href="#top" aria-label="Sonora home"><span class="brand-mark">✦</span> sonora</a>
-      <div class="topbar-meta"><span class="status-dot"></span> Demo mode <span class="divider"></span> v0.1 studio</div>
+      <div class="topbar-meta" id="topbar-status"><span class="status-dot"></span><span id="status-message">Creative planning demo</span><span class="divider"></span> renderer not connected</div>
       <button class="ghost-button" id="connect-button">Connect YouTube <span>↗</span></button>
     </header>
 
     <main id="top">
       <section class="hero">
-        <div class="eyebrow"><span class="eyebrow-line"></span> AI-directed music visuals</div>
-        <h1>Turn a feeling<br /><em>into a film.</em></h1>
-        <p class="hero-copy">Describe the music you want. Sonora will compose an original track and shape a visual world around its mood, rhythm, and energy.</p>
+        <div class="eyebrow"><span class="eyebrow-line"></span> An AI creative studio</div>
+        <h1>From one idea<br /><em>to a whole world.</em></h1>
+        <p class="hero-copy">Create a music video, a story, an animated short, an explainer—or something entirely your own. Shape the idea together before anything is rendered.</p>
       </section>
 
-      <section class="studio-grid" aria-label="Music video studio">
+      <section class="studio-grid" aria-label="Creative video studio">
         <div class="control-panel panel">
           <div class="panel-heading">
-            <div><span class="section-index">01</span><h2>Set the direction</h2></div>
-            <span class="mono-label">INPUT</span>
+            <div><span class="section-index">01</span><h2>What are we making?</h2></div>
+            <span class="mono-label">YOUR IDEA</span>
+          </div>
+          <div class="type-grid" role="group" aria-label="Choose a creation type">
+            <button class="type-card active" type="button" data-type="music-video" aria-pressed="true"><span>♫</span><strong>Music video</strong><small>Original score + visuals</small></button>
+            <button class="type-card" type="button" data-type="story" aria-pressed="false"><span>◌</span><strong>Story</strong><small>Plot, scenes + dialogue</small></button>
+            <button class="type-card" type="button" data-type="animated-short" aria-pressed="false"><span>✧</span><strong>Animated short</strong><small>Characters + motion</small></button>
+            <button class="type-card" type="button" data-type="explainer" aria-pressed="false"><span>▤</span><strong>Explainer</strong><small>Teach an idea clearly</small></button>
+            <button class="type-card type-card-custom" type="button" data-type="custom" aria-pressed="false"><span>＋</span><strong>Something else</strong><small>Dream up your own format</small></button>
           </div>
           <div class="input-wrap" id="brief-input">
-            <label for="brief-text">What music should Sonora generate?</label>
-            <textarea id="brief-text" rows="3" placeholder="A warm acoustic indie-pop song, brushed drums, fingerpicked guitar, intimate vocals, sunset road-trip energy..." spellcheck="true"></textarea>
-            <small>Describe genre, instruments, tempo, mood, vocals, language, or story.</small>
+            <label for="brief-text" id="brief-label">Describe the music video you imagine</label>
+            <textarea id="brief-text" rows="4" maxlength="1800" placeholder="An original, melodic indie-pop video at golden hour: intimate vocals, fingerpicked guitar, warm bass, brushed drums, and a road-trip story that opens up into a joyful final chorus..." spellcheck="true"></textarea>
+            <small id="brief-help">Include the sound, mood, story, and details that make this yours.</small>
+          </div>
+          <div class="input-wrap">
+            <label for="visual-style">Visual style <span class="optional-label">OPTIONAL</span></label>
+            <input class="text-field" id="visual-style" type="text" placeholder="e.g. tactile 2D animation, warm film grain, dreamlike realism" maxlength="180" />
           </div>
           <div class="input-wrap" id="reference-input">
             <label for="source-input">Optional YouTube reference</label>
-            <div class="field-with-icon"><span class="play-icon">▶</span><input id="source-input" type="url" placeholder="Paste a reference for mood inspiration" autocomplete="off" /><span class="field-status">↗</span></div>
-            <small>Sonora uses the reference for broad inspiration. It does not copy or download the source track.</small>
+            <div class="field-with-icon"><span class="play-icon">▶</span><input id="source-input" type="url" placeholder="Paste a reference for broad inspiration" autocomplete="off" /><span class="field-status">↗</span></div>
+            <small>Optional inspiration only. Sonora does not download or reproduce the source video, music, lyrics, or shots.</small>
           </div>
-          <div class="quick-tags" aria-label="Quick creative directions">
-            <button data-tag="cinematic">Cinematic</button><button data-tag="dreamy">Dreamy</button><button data-tag="high energy">High energy</button><button data-tag="minimal">Minimal</button>
+          <div class="quick-tags" aria-label="Quick visual directions">
+            <button type="button" data-style="Cinematic, widescreen composition">Cinematic</button><button type="button" data-style="Dreamlike, soft light, unhurried camera movement">Dreamy</button><button type="button" data-style="Vivid, kinetic, high-energy visual rhythm">High energy</button><button type="button" data-style="Minimal, tactile, intimate framing">Minimal</button>
           </div>
-          <div class="direction-row"><div><span class="row-label">OUTPUT</span><strong id="format-label">YouTube Short · 9:16</strong></div><button class="format-toggle" id="format-toggle">Switch to 16:9 <span>→</span></button></div>
-          <button class="primary-button" id="generate-button"><span class="button-icon">✦</span> Generate my music video <span class="arrow">↗</span></button>
-          <p class="build-status" id="build-status" aria-live="polite">Ready — describe the music you want.</p>
+          <div class="settings-grid">
+            <div class="input-wrap compact-field"><label for="duration-select">Length</label><select id="duration-select"><option value="15">15 seconds</option><option value="30" selected>30 seconds</option><option value="60">60 seconds</option><option value="90">90 seconds</option></select></div>
+            <div class="input-wrap compact-field"><label for="format-select">Format</label><select id="format-select"><option value="short">Vertical · 9:16</option><option value="wide">Landscape · 16:9</option><option value="square">Square · 1:1</option></select></div>
+          </div>
+          <fieldset class="audio-options"><legend>Sound & accessibility</legend>
+            <label><input id="music-enabled" type="checkbox" checked /><span>Original music</span></label>
+            <label><input id="narration-enabled" type="checkbox" /><span>Dialogue / narration</span></label>
+            <label><input id="captions-enabled" type="checkbox" checked /><span>Captions</span></label>
+          </fieldset>
+          <button class="primary-button" id="generate-button"><span class="button-icon">✦</span> Create my treatment <span class="arrow">↗</span></button>
+          <ol class="phase-list" id="phase-list" aria-label="Treatment progress">
+            <li data-phase="1"><span>01</span> Brief</li><li data-phase="2"><span>02</span> Plan</li><li data-phase="3"><span>03</span> Review</li>
+          </ol>
+          <p class="build-status" id="build-status" aria-live="polite">Ready — choose a format and describe your idea.</p>
         </div>
 
         <div class="preview-panel panel">
-          <div class="preview-top"><div><span class="section-index">02</span><h2>Preview direction</h2></div><span class="draft-pill" id="draft-pill" aria-live="polite">DRAFT 01</span></div>
+          <div class="preview-top"><div><span class="section-index">02</span><h2>Your creative treatment</h2></div><span class="draft-pill" id="draft-pill" aria-live="polite">WAITING</span></div>
           <div class="visual-preview" id="visual-preview">
-            <video id="preview-video" class="preview-video" controls playsinline preload="metadata"></video>
             <div class="preview-grid"></div><div class="sun-disc"></div><div class="mountain mountain-back"></div><div class="mountain mountain-front"></div>
-            <div class="preview-copy"><span class="preview-kicker">SONORA / VISUAL STUDY</span><strong id="preview-title">Neon after rain</strong><span id="preview-subtitle">A cinematic study in motion &amp; light</span></div>
-            <div class="preview-controls"><button aria-label="Play preview" id="play-button">▶</button><span>00:00 / 00:30</span><span class="control-spacer"></span><span>▣</span><span>⛶</span></div>
+            <div class="preview-copy"><span class="preview-kicker" id="preview-kicker">SONORA / CONCEPT BOARD</span><strong id="preview-title">Your idea, taking shape</strong><span id="preview-subtitle">A plan first. The finished video comes after generation is connected.</span></div>
+            <div class="preview-stamp">CONCEPT ONLY<br /><span>NOT A RENDERED VIDEO</span></div>
           </div>
-          <div class="preview-footer"><div class="audio-line"><span class="audio-bars">▮▮▮ ▮▮▮▮ ▮▮ ▮▮▮▮▮</span><span id="audio-label">Original music score</span></div><span class="mono-label">AI STORYBOARD</span></div>
+          <div class="preview-footer"><div class="audio-line"><span class="audio-bars">♫</span><span id="audio-label">No audio generated yet</span></div><span class="mono-label" id="provider-label">PLAN PREVIEW</span></div>
+          <div class="treatment-details" id="treatment-details" hidden>
+            <article><span class="row-label">THE IDEA</span><p id="treatment-summary"></p></article>
+            <div class="treatment-columns"><article><span class="row-label">VISUAL LANGUAGE</span><p id="visual-language"></p></article><article><span class="row-label">SOUND PLAN</span><p id="sound-plan"></p></article></div>
+            <article><span class="row-label">VOICE & CAPTIONS</span><p id="voice-plan"></p></article>
+          </div>
         </div>
       </section>
 
       <section class="lower-grid">
-        <div class="story-panel panel"><div class="panel-heading"><div><span class="section-index">03</span><h2>Storyboard</h2></div><span class="mono-label" id="scene-count">04 SCENES</span></div><div class="scene-list" id="scene-list"></div></div>
-        <div class="publish-panel panel"><div class="panel-heading"><div><span class="section-index">04</span><h2>Publish</h2></div><span class="mono-label">OPTIONAL</span></div><div class="publish-card"><div class="youtube-badge">▶</div><div><strong>Upload to your channel</strong><p>Connect YouTube after reviewing your final cut.</p></div><span class="lock">⌑</span></div><div class="publish-note"><span>ⓘ</span><span>Videos are created as private by default. You stay in control of the final upload.</span></div><button class="outline-button" id="publish-button" disabled>Connect YouTube to continue <span>↗</span></button></div>
+        <div class="story-panel panel"><div class="panel-heading"><div><span class="section-index">03</span><h2>Scene-by-scene plan</h2></div><span class="mono-label" id="scene-count">PLAN PENDING</span></div><div class="scene-list" id="scene-list"><article class="scene scene-empty"><span class="scene-number">YOUR STORYBOARD</span><strong>Waiting for your idea</strong><p>Scenes, dialogue, music cues, and visual direction will appear here.</p></article></div><button class="text-button" id="download-plan" type="button" hidden>Download treatment ↗</button></div>
+        <div class="publish-panel panel"><div class="panel-heading"><div><span class="section-index">04</span><h2>Render & publish</h2></div><span class="mono-label">AFTER REVIEW</span></div><div class="publish-card"><div class="youtube-badge">▶</div><div><strong>One complete video file</strong><p>Music, narration, visuals, and captions assembled together.</p></div><span class="lock">⌑</span></div><div class="render-notice"><strong>Rendering is not connected yet</strong><p>This build creates an editable treatment and storyboard. It does not pretend a video or AI-generated soundtrack has been rendered. A real audio/video provider must be connected before this step can run.</p></div><div class="publish-note"><span>ⓘ</span><span>You review the finished preview and approve the private YouTube upload.</span></div><button class="outline-button" id="publish-button" disabled>Available after a real video is rendered <span>↗</span></button></div>
       </section>
     </main>
-    <footer><span>SONORA © 2026</span><span>Original visuals · Human approval required</span><span>Built for the open creative web</span></footer>
-    <script src="app.js?v=prompt-first-v2"></script>
+    <footer><span>SONORA © 2026</span><span>Stories, music videos & more · Human approval required</span><span>Ideas first. Honest generation.</span></footer>
+    <script src="app.js?v=creative-studio-v1"></script>
   </body>
 </html>

@@ -1,48 +1,82 @@
-const state = { mode: 'brief', format: 'short', connected: false, generated: false, accessToken: null, channelTitle: '', videoBlob: null, previewUrl: '' };
+const state = { type: 'music-video', format: 'short', duration: 30, connected: false, generated: false, accessToken: null, channelTitle: '', videoBlob: null, previewUrl: '', plan: null };
 const PREVIEW_SECONDS = 10;
 const YOUTUBE_CLIENT_ID = '442084033193-giinlub1bcoh39r5v2ior5nr2aq7oe1r.apps.googleusercontent.com';
 const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
 let tokenClient;
 
-const scenes = {
-  default: [
-    ['01', 'The first spark', 'A wide, quiet opening. Light catches the city just before the beat arrives.'],
-    ['02', 'Velocity / violet', 'The camera begins to move; reflections stretch into liquid color.'],
-    ['03', 'Find the pulse', 'Close, tactile fragments cut on the rhythm—hands, rain, glass, neon.'],
-    ['04', 'Leave a trace', 'The world slows down and leaves one glowing frame hanging in the air.'],
-  ],
-  dreamy: [
-    ['01', 'Soft focus', 'A warm horizon breathes through a haze of blue and lilac.'],
-    ['02', 'Weightless', 'Slow camera drift through clouds, water and half-remembered places.'],
-    ['03', 'The quiet note', 'A single figure moves through a field of floating light.'],
-    ['04', 'Morning, almost', 'The image fades into a pale afterglow as the last note lands.'],
-  ],
+const typeCopy = {
+  'music-video': {
+    label: 'Music video',
+    prompt: 'An original, melodic indie-pop video at golden hour: intimate vocals, fingerpicked guitar, warm bass, brushed drums, and a road-trip story that opens up into a joyful final chorus...',
+    briefLabel: 'Describe the music video you imagine',
+    help: 'Include the sound, mood, story, and details that make this yours.',
+    music: true,
+    narration: false,
+  },
+  story: {
+    label: 'Story',
+    prompt: 'A hopeful short story about a tiny robot protecting the last living plant in a quiet, abandoned city. Give it a surprising but warm ending...',
+    briefLabel: 'What story should Sonora tell?',
+    help: 'Describe the characters, setting, conflict, and the feeling or ending you want.',
+    music: true,
+    narration: true,
+  },
+  'animated-short': {
+    label: 'Animated short',
+    prompt: 'A curious young fox discovers a tiny floating garden above the city. Stylized 3D animation, expressive character acting, playful camera movement, and a gentle ending...',
+    briefLabel: 'Describe the animated short',
+    help: 'Tell us about the characters, animation style, action, and world.',
+    music: true,
+    narration: false,
+  },
+  explainer: {
+    label: 'Explainer',
+    prompt: 'Explain how a solar panel turns sunlight into electricity for a curious 12-year-old. Use clear visual metaphors, friendly narration, and simple animated diagrams...',
+    briefLabel: 'What should the video explain?',
+    help: 'Name the topic, who it is for, and the one thing viewers should remember.',
+    music: true,
+    narration: true,
+  },
+  custom: {
+    label: 'Custom video',
+    prompt: 'Describe any video you can imagine—its purpose, audience, characters or subject, tone, and what the viewer should feel...',
+    briefLabel: 'What would you like to create?',
+    help: 'Start anywhere. Sonora will shape the idea into a production plan.',
+    music: true,
+    narration: false,
+  },
 };
 
 const $ = (id) => document.getElementById(id);
 
-function renderScenes(kind = 'default') {
-  $('scene-list').innerHTML = scenes[kind].map(([num, title, body]) => `<article class="scene"><span class="scene-number">${num} / 04</span><strong>${title}</strong><p>${body}</p></article>`).join('');
+function selectCreationType(type) {
+  state.type = typeCopy[type] ? type : 'custom';
+  document.querySelectorAll('.type-card').forEach((button) => {
+    const selected = button.dataset.type === state.type;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  const copy = typeCopy[state.type];
+  $('brief-label').textContent = copy.briefLabel;
+  $('brief-help').textContent = copy.help;
+  $('brief-text').placeholder = copy.prompt;
+  $('music-enabled').checked = copy.music;
+  $('narration-enabled').checked = copy.narration;
+  $('preview-kicker').textContent = `SONORA / ${copy.label.toUpperCase()} TREATMENT`;
 }
 
-document.querySelectorAll('.mode').forEach((button) => button.addEventListener('click', () => {
-  state.mode = button.dataset.mode;
-  document.querySelectorAll('.mode').forEach((item) => item.classList.toggle('active', item === button));
-  $('reference-input').classList.toggle('hidden', state.mode !== 'reference');
-  $('brief-input').classList.toggle('hidden', state.mode !== 'brief');
-}));
+document.querySelectorAll('.type-card').forEach((button) => button.addEventListener('click', () => selectCreationType(button.dataset.type)));
 
 document.querySelectorAll('.quick-tags button').forEach((button) => button.addEventListener('click', () => {
-  document.querySelectorAll('.quick-tags button').forEach((item) => item.classList.remove('selected'));
-  button.classList.add('selected');
-  if (button.dataset.tag === 'dreamy') renderScenes('dreamy'); else renderScenes('default');
+  const style = $('visual-style');
+  const selection = button.dataset.style;
+  style.value = style.value === selection ? '' : selection;
+  document.querySelectorAll('.quick-tags button').forEach((item) => item.classList.toggle('selected', item === button && style.value));
+  style.focus();
 }));
 
-$('format-toggle').addEventListener('click', () => {
-  state.format = state.format === 'short' ? 'wide' : 'short';
-  $('format-label').textContent = state.format === 'short' ? 'YouTube Short · 9:16' : 'Music video · 16:9';
-  $('format-toggle').innerHTML = state.format === 'short' ? 'Switch to 16:9 <span>→</span>' : 'Switch to 9:16 <span>→</span>';
-});
+$('format-select').addEventListener('change', (event) => { state.format = event.target.value; });
+$('duration-select').addEventListener('change', (event) => { state.duration = Number(event.target.value); });
 
 function inferMusicAnalysis(input) {
   const direction = input.toLowerCase();
@@ -55,15 +89,73 @@ function inferMusicAnalysis(input) {
   return { genre, mood: dreamy ? 'dreamy' : energetic ? 'driving' : acoustic ? 'warm' : 'cinematic', energy: energetic ? 'high' : dreamy ? 'low' : 'building', tempo, instruments, palette: ['violet', 'warm amber', 'midnight blue'], visualThemes: ['motion', 'light', 'atmosphere'] };
 }
 
-function demoAnalysis(input) {
-  const analysis = inferMusicAnalysis(input);
-  const dreamy = analysis.mood === 'dreamy';
-  const title = dreamy ? 'A softer kind of blue' : analysis.mood === 'warm' ? 'Woodsmoke in the headlights' : analysis.energy === 'high' ? 'Voltage after dark' : 'Neon after rain';
-  return { provider: 'demo', title, subtitle: `${analysis.genre} · ${analysis.tempo} BPM · ${analysis.instruments.slice(0, 2).join(' + ')}`, analysis, scenes: (dreamy ? scenes.dreamy : scenes.default).map(([, title, description]) => ({ title, description })) };
+function demoAnalysis(request) {
+  const analysis = inferMusicAnalysis(`${request.input} ${request.visualStyle}`);
+  const title = request.input.split(/[.!?\n]/)[0].trim().split(/\s+/).slice(0, 7).join(' ').replace(/[,;:]$/, '') || typeCopy[request.type].label;
+  const sceneTypes = {
+    'music-video': [
+      ['Opening image', 'Introduce the visual world and let the first musical motif breathe.'],
+      ['The pulse arrives', 'Build movement and texture as the rhythm and arrangement open up.'],
+      ['The emotional lift', 'Bring the central image or performance into focus at the musical peak.'],
+      ['Last note', 'Resolve the visual story with a final image that lands with the music.'],
+    ],
+    story: [
+      ['A world before', 'Meet the protagonist and understand what matters in their world.'],
+      ['The turning point', 'An unexpected event forces the protagonist to make a choice.'],
+      ['The hard choice', 'The choice has consequences; raise the emotional and visual stakes.'],
+      ['A changed world', 'Resolve the central conflict with a clear, satisfying final image.'],
+    ],
+    'animated-short': [
+      ['Meet the character', 'Establish the character silhouette, personality, and animated world.'],
+      ['A curious discovery', 'Use expressive motion and a visual surprise to set the story in motion.'],
+      ['The playful challenge', 'Escalate the action while preserving the character design and screen direction.'],
+      ['A little wonder', 'Finish with a memorable, emotionally clear animated payoff.'],
+    ],
+    explainer: [
+      ['The question', 'Start with the viewer’s question and a concrete visual hook.'],
+      ['The simple model', 'Introduce one visual metaphor that makes the main idea intuitive.'],
+      ['How it works', 'Show the key steps in order, with narration and captions kept in sync.'],
+      ['The takeaway', 'Repeat the core idea and close with a practical, memorable summary.'],
+    ],
+    custom: [
+      ['Set the scene', 'Establish the subject, audience, tone, and visual world.'],
+      ['Build the idea', 'Develop the central action or message with a distinct visual progression.'],
+      ['Make the moment', 'Deliver the most important reveal, change, or emotional beat.'],
+      ['Leave an impression', 'Resolve the idea with a strong final image or call to action.'],
+    ],
+  };
+  const titles = sceneTypes[request.type] || sceneTypes.custom;
+  const sceneSeconds = Math.floor(request.duration / titles.length);
+  const musicEnabled = request.sound?.music !== false;
+  const narrationEnabled = request.sound?.narration === true;
+  const captionsEnabled = request.sound?.captions !== false;
+  const musicDirection = musicEnabled
+    ? request.type === 'music-video'
+      ? `${analysis.genre} at about ${analysis.tempo} BPM, with ${analysis.instruments.join(', ')}; a distinct melody and arrangement that follow the brief.`
+      : `An original ${analysis.mood} underscore with ${analysis.instruments.slice(0, 3).join(', ')}; leave space for the story and dialogue.`
+    : 'No score requested. Preserve dialogue and natural sound, with intentional quiet where it helps.';
+  return {
+    provider: 'demo',
+    type: request.type,
+    title,
+    subtitle: `${typeCopy[request.type].label} · ${request.duration}s · ${request.format === 'wide' ? '16:9' : request.format === 'square' ? '1:1' : '9:16'}`,
+    treatment: `A ${request.duration}-second ${typeCopy[request.type].label.toLowerCase()} built from the user’s direction: ${request.input}`,
+    visualStyle: request.visualStyle || 'Let the brief guide a coherent visual style, color palette, and camera language.',
+    audioDirection: musicDirection,
+    narration: narrationEnabled ? 'Plan original narration or character dialogue; mix it clearly above the score.' : 'No narration requested.',
+    captions: captionsEnabled ? 'Add readable, synchronized captions with safe margins for the selected aspect ratio.' : 'Captions are off.',
+    analysis,
+    scenes: titles.map(([sceneTitle, description], index) => ({ title: sceneTitle, description: `${description} Direction: ${request.input}`, durationSeconds: index === titles.length - 1 ? request.duration - sceneSeconds * (titles.length - 1) : sceneSeconds, audioCue: index === 0 ? 'Opening cue' : index === titles.length - 1 ? 'Resolve and fade' : 'Transition cue' })),
+  };
 }
 
-function setBuildPhase(label, detail = '') {
+function setBuildPhase(phase, label, detail = '') {
   $('build-status').textContent = detail ? `${label} · ${detail}` : label;
+  document.querySelectorAll('#phase-list li').forEach((item) => {
+    const itemPhase = Number(item.dataset.phase);
+    item.classList.toggle('complete', itemPhase < phase);
+    item.classList.toggle('current', itemPhase === phase);
+  });
 }
 
 function pause(ms) {
@@ -101,7 +193,7 @@ async function connectYouTube() {
         $('connect-button').innerHTML = `YouTube: ${state.channelTitle} <span>✓</span>`;
         $('connect-button').style.color = 'var(--accent)';
         $('publish-button').disabled = !state.generated;
-        $('publish-button').textContent = state.generated ? 'Upload private draft ↗' : 'Build a draft first';
+        $('publish-button').textContent = state.generated ? 'Upload private draft ↗' : 'Available after a real video is rendered';
       } catch (error) {
         $('connect-button').disabled = false;
         $('connect-button').textContent = 'Connect YouTube ↗';
@@ -113,85 +205,132 @@ async function connectYouTube() {
   tokenClient.requestAccessToken({ prompt: 'select_account consent' });
 }
 
-async function requestAnalysis(input, reference = '') {
-  // GitHub Pages is static hosting, so never call the missing server route there.
-  if (window.location.hostname.endsWith('github.io')) return demoAnalysis(input);
+async function requestPlan(request) {
+  // GitHub Pages cannot run a private server-side model. Keep the treatment
+  // builder honest and label its local plan as a demo instead of claiming AI.
+  if (window.location.hostname.endsWith('github.io')) return demoAnalysis(request);
   try {
-    const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input, reference, format: state.format }) });
-    if (!response.ok) return demoAnalysis(input);
-    let result;
-    try {
-      result = await response.json();
-    } catch {
-      // GitHub Pages returns an HTML 404 for /api/analyze. Treat that as the
-      // expected public-demo case instead of surfacing a JSON parse error.
-      throw new TypeError('Demo Mode endpoint unavailable');
-    }
-    if (!response.ok) throw new Error(result.error || 'Analysis failed');
+    const response = await fetch('/api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'The creative plan could not be prepared.');
     return result;
   } catch (error) {
-    // GitHub Pages has no server runtime. Keep the public demo usable there;
-    // the local/server deployment uses the Groq-backed endpoint above.
-    if (error instanceof TypeError || /Failed to fetch/i.test(error.message)) {
-      return demoAnalysis(input);
-    }
-    console.warn('Sonora analysis unavailable; using Demo Mode.', error);
-    return demoAnalysis(input);
+    if (error instanceof TypeError || /Failed to fetch/i.test(error.message)) return demoAnalysis(request);
+    throw error;
   }
 }
 
 $('generate-button').addEventListener('click', async () => {
   const button = $('generate-button');
-  const original = button.innerHTML;
-  const brief = $('brief-text').value.trim();
+  const input = $('brief-text').value.trim();
   const reference = $('source-input').value.trim();
-  const input = [brief, reference ? `Optional reference: ${reference}` : ''].filter(Boolean).join('\n');
   if (!input) {
     $('brief-text').focus();
-    $('draft-pill').textContent = 'ADD A DIRECTION';
-    $('draft-pill').title = 'Describe the music you want first.';
-    setBuildPhase('Waiting for input', 'describe the music');
+    $('draft-pill').textContent = 'ADD AN IDEA';
+    $('draft-pill').title = 'Describe what you want Sonora to create.';
+    setBuildPhase(0, 'Waiting for your idea', 'Describe the video you want to make.');
     return;
   }
+  const request = {
+    input,
+    reference,
+    visualStyle: $('visual-style').value.trim(),
+    type: state.type,
+    format: $('format-select').value,
+    duration: Number($('duration-select').value),
+    sound: {
+      music: $('music-enabled').checked,
+      narration: $('narration-enabled').checked,
+      captions: $('captions-enabled').checked,
+    },
+  };
+  state.format = request.format;
+  state.duration = request.duration;
+  state.plan = null;
+  state.generated = false;
+  state.videoBlob = null;
+  $('treatment-details').hidden = true;
+  $('download-plan').hidden = true;
+  $('publish-button').disabled = true;
   button.disabled = true;
-  button.innerHTML = '<span class="button-icon">◌</span> Building your visual world…';
-  let audioContext;
+  button.innerHTML = '<span class="button-icon">◌</span> Shaping your treatment…';
   try {
-    // Create the audio context directly from the button gesture. This lets the
-    // browser authorize the generated music for the MediaRecorder stream.
-    audioContext = createMusicContext();
-    setBuildPhase('Phase 1/5 · Input received', 'checking your direction');
-    await pause(350);
-    setBuildPhase('Phase 2/5 · Analyzing', reference ? 'mapping your brief + reference inspiration' : 'mapping genre, mood, tempo and instruments');
-    const result = await requestAnalysis(input, reference);
-    await pause(650);
-    setBuildPhase('Phase 3/5 · Storyboarding', 'arranging four visual scenes');
-    await pause(650);
-    $('preview-title').textContent = result.title || 'Neon after rain';
-    $('preview-subtitle').textContent = result.subtitle || 'A cinematic study in motion & light';
-    $('draft-pill').textContent = 'DRAFT 02';
-    if (Array.isArray(result.scenes) && result.scenes.length) $('scene-list').innerHTML = result.scenes.map((scene, index) => `<article class="scene"><span class="scene-number">0${index + 1} / 04</span><strong>${scene.title}</strong><p>${scene.description}</p></article>`).join('');
-    setBuildPhase('Phase 4/5 · Rendering preview', 'composing original music + visuals');
-    state.videoBlob = await canvasVideo($('preview-title').textContent, state.format, input, audioContext, result.analysis || {});
-    state.generated = true;
-    if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
-    state.previewUrl = URL.createObjectURL(state.videoBlob);
-    $('preview-video').src = state.previewUrl;
-    $('preview-video').classList.add('ready');
-    $('visual-preview').classList.add('has-video');
-    if (state.connected) $('publish-button').disabled = false;
-    $('publish-button').textContent = state.connected ? 'Upload private draft ↗' : 'Connect YouTube to upload';
-    await pause(700);
-    setBuildPhase('Phase 5/5 · Ready', 'review your visual world below');
+    setBuildPhase(1, 'Phase 1/3 · Brief received', `${typeCopy[state.type].label} · ${request.duration} seconds · ${request.format}`);
+    await pause(120);
+    setBuildPhase(2, 'Phase 2/3 · Building treatment', reference ? 'the reference is inspiration only' : 'turning your idea into a production plan');
+    const result = await requestPlan(request);
+    renderPlan(result, request);
+    setBuildPhase(4, 'Phase 3/3 · Treatment ready', result.provider === 'groq' ? 'review the AI-written plan below' : 'sample plan only — no media has been rendered');
   } catch (error) {
-    $('draft-pill').textContent = 'DEMO MODE';
+    $('draft-pill').textContent = 'PLAN FAILED';
     $('draft-pill').title = error.message;
-    setBuildPhase('Build stopped', error.message);
-    if (audioContext && audioContext.state !== 'closed') audioContext.close().catch(() => {});
+    setBuildPhase(0, 'Plan stopped', error.message);
   } finally {
     button.disabled = false;
-    button.innerHTML = original;
+    button.innerHTML = `<span class="button-icon">✦</span> ${state.plan ? 'Refine my treatment' : 'Create my treatment'} <span class="arrow">↗</span>`;
   }
+});
+
+function renderPlan(result, request) {
+  state.plan = result;
+  $('preview-title').textContent = result.title || 'Your idea, taking shape';
+  $('preview-subtitle').textContent = result.subtitle || `${typeCopy[state.type].label} · ${request.duration}s`;
+  $('preview-kicker').textContent = `SONORA / ${typeCopy[state.type].label.toUpperCase()} TREATMENT`;
+  $('treatment-summary').textContent = result.treatment || request.input;
+  $('visual-language').textContent = result.visualStyle || request.visualStyle || 'Guided by your brief.';
+  $('sound-plan').textContent = result.audioDirection || (request.sound.music ? 'Original score planned; not yet rendered.' : 'No score requested.');
+  $('voice-plan').textContent = [result.narration || (request.sound.narration ? 'Dialogue or narration planned.' : 'No narration requested.'), result.captions || (request.sound.captions ? 'Captions requested.' : 'Captions are off.')].join(' ');
+  $('treatment-details').hidden = false;
+  $('audio-label').textContent = request.sound.music ? 'Music direction planned · no audio rendered' : 'No music requested';
+  $('provider-label').textContent = result.provider === 'groq' ? 'GROQ TREATMENT' : 'DEMO TREATMENT';
+  $('draft-pill').textContent = result.provider === 'groq' ? 'PLAN READY' : 'SAMPLE PLAN';
+  $('draft-pill').title = result.provider === 'groq' ? 'Treatment prepared by the configured text model. No media has been rendered.' : 'A template-based sample plan. No AI media has been generated.';
+  $('scene-count').textContent = `${result.scenes?.length || 0} SCENES · ${request.duration}s`;
+  $('scene-list').replaceChildren();
+  (result.scenes || []).forEach((scene, index) => {
+    const article = document.createElement('article');
+    article.className = 'scene';
+    const number = document.createElement('span');
+    number.className = 'scene-number';
+    number.textContent = `SCENE ${String(index + 1).padStart(2, '0')} · ${scene.durationSeconds || ''}s`;
+    const title = document.createElement('strong');
+    title.textContent = scene.title || `Scene ${index + 1}`;
+    const description = document.createElement('p');
+    description.textContent = scene.description || '';
+    const cue = document.createElement('small');
+    cue.className = 'scene-cue';
+    cue.textContent = scene.audioCue || '';
+    article.append(number, title, description, cue);
+    $('scene-list').append(article);
+  });
+  $('download-plan').hidden = false;
+  $('status-message').textContent = result.provider === 'groq' ? 'Groq treatment' : 'Sample treatment';
+}
+
+$('download-plan').addEventListener('click', () => {
+  if (!state.plan) return;
+  const plan = state.plan;
+  const lines = [
+    `# ${plan.title || 'Sonora treatment'}`,
+    '',
+    plan.subtitle || '',
+    '',
+    `## Treatment\n${plan.treatment || ''}`,
+    `## Visual language\n${plan.visualStyle || ''}`,
+    `## Sound plan\n${plan.audioDirection || ''}`,
+    `## Voice & captions\n${[plan.narration, plan.captions].filter(Boolean).join('\n')}`,
+    '## Scenes',
+    ...(plan.scenes || []).flatMap((scene, index) => [`### ${index + 1}. ${scene.title} (${scene.durationSeconds || '?'}s)`, scene.description || '', scene.audioCue || '']),
+    '',
+    'Planning document only. No audio or video was rendered.',
+  ];
+  const file = new Blob([lines.join('\n\n')], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'sonora-treatment.md';
+  link.click();
+  URL.revokeObjectURL(url);
 });
 
 $('connect-button').addEventListener('click', () => {
@@ -512,7 +651,4 @@ $('publish-button').addEventListener('click', async () => {
   }
 });
 
-$('play-button').addEventListener('click', (event) => {
-  event.currentTarget.textContent = event.currentTarget.textContent === '▶' ? 'Ⅱ' : '▶';
-});
-
+selectCreationType(state.type);
