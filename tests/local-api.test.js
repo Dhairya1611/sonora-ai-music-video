@@ -121,6 +121,7 @@ test('a creative brief produces a model job and returns the actual audio bytes',
   assert.equal(aceRequests[0].thinking, false);
   assert.equal(aceRequests[0].use_cot_caption, false);
   assert.equal(aceRequests[0].use_cot_language, false);
+  assert.equal(aceRequests[0].use_cot_metas, false);
   assert.equal(aceRequests[0].audio_format, 'wav');
   assert.equal(aceRequests[0].use_random_seed, true);
   const audioResponse = await fetch(`http://127.0.0.1:${sonoraPort}/api/jobs/${started.id}/audio`, { headers: { Origin: origin } });
