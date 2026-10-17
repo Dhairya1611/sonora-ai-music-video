@@ -84,8 +84,10 @@ function setRendererStatus(title, description, status = '') {
 
 async function checkRenderer() {
   const checkButton = $('check-renderer');
+  const localStudioLink = $('open-local-studio');
   checkButton.disabled = true;
   checkButton.textContent = 'Checking…';
+  if (localStudioLink) localStudioLink.hidden = true;
   setRendererStatus('Checking for the Sonora local companion…', 'Looking for the service on this Mac at 127.0.0.1:4173.');
   try {
     const controller = new AbortController();
@@ -101,10 +103,14 @@ async function checkRenderer() {
     }
   } catch (error) {
     const blocked = error.name === 'AbortError' || error instanceof TypeError;
+    const canOpenLocalStudio = location.hostname.endsWith('github.io') || location.protocol === 'file:';
+    if (localStudioLink) localStudioLink.hidden = !canOpenLocalStudio;
     setRendererStatus(
       'Local companion not reachable',
       blocked
-        ? 'Run “npm start” from Sonora’s folder on this Mac. If your browser asks, allow the GitHub Pages site to access devices on your local network, then check again.'
+        ? canOpenLocalStudio
+          ? 'This browser could not connect to the local renderer from the hosted page. Keep “npm start” running, then open Sonora directly on this Mac to generate without that cross-site connection.'
+          : 'Run “npm start” from Sonora’s folder on this Mac, then check again.'
         : error.message,
       'error',
     );
