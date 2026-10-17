@@ -1,0 +1,5 @@
+.connect-control{display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:min(300px,48vw)}
+.youtube-connection-status{min-height:11px;color:var(--muted);font:9px var(--mono);text-align:right}
+.youtube-connection-status[data-state="connected"]{color:var(--accent)}
+.youtube-connection-status[data-state="error"]{color:#ff9a9a}
+.connect-control .ghost-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

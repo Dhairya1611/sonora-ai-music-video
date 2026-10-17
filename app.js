@@ -49,6 +49,12 @@ const typeCopy = {
 
 const $ = (id) => document.getElementById(id);
 
+function setYouTubeConnectionStatus(message, stateName = '') {
+  const status = $('youtube-connection-status');
+  status.textContent = message;
+  status.dataset.state = stateName;
+}
+
 function selectCreationType(type) {
   state.type = typeCopy[type] ? type : 'custom';
   document.querySelectorAll('.type-card').forEach((button) => {
@@ -175,8 +181,11 @@ function waitForGoogle() {
 }
 
 async function connectYouTube() {
-  $('connect-button').textContent = 'Loading Google sign-in…';
-  $('connect-button').disabled = true;
+  const button = $('connect-button');
+  button.textContent = 'Loading Google sign-in…';
+  button.disabled = true;
+  button.title = '';
+  setYouTubeConnectionStatus('Waiting for Google authorization…');
   const google = await waitForGoogle();
   tokenClient ||= google.accounts.oauth2.initTokenClient({
     client_id: YOUTUBE_CLIENT_ID,
@@ -184,21 +193,23 @@ async function connectYouTube() {
     callback: async (response) => {
       try {
         if (response.error) throw new Error(response.error_description || response.error);
+        if (!response.access_token) throw new Error('Google did not return an upload authorization token.');
         state.accessToken = response.access_token;
-        const channelResponse = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', { headers: { Authorization: `Bearer ${state.accessToken}` } });
-        const channelData = await channelResponse.json();
-        if (!channelResponse.ok || !channelData.items?.length) throw new Error(channelData.error?.message || 'No YouTube channel was found for this Google account.');
-        state.channelTitle = channelData.items[0].snippet.title;
         state.connected = true;
-        $('connect-button').innerHTML = `YouTube: ${state.channelTitle} <span>✓</span>`;
-        $('connect-button').style.color = 'var(--accent)';
-        $('publish-button').disabled = !state.generated;
-        $('publish-button').textContent = state.generated ? 'Upload private draft ↗' : 'Available after a real video is rendered';
+        button.disabled = false;
+        button.innerHTML = 'YouTube connected <span>✓</span>';
+        button.style.color = 'var(--accent)';
+        setYouTubeConnectionStatus('Upload access authorized for this session.', 'connected');
+        $('publish-button').disabled = true;
+        $('publish-button').textContent = 'Available after a real video is rendered';
       } catch (error) {
-        $('connect-button').disabled = false;
-        $('connect-button').textContent = 'Connect YouTube ↗';
-        $('connect-button').title = error.message;
-        $('draft-pill').textContent = 'AUTH NEEDED';
+        state.connected = false;
+        state.accessToken = null;
+        button.disabled = false;
+        button.textContent = 'Connect YouTube ↗';
+        button.style.color = '';
+        button.title = error.message;
+        setYouTubeConnectionStatus(`Connection failed: ${error.message}`, 'error');
       }
     },
   });
@@ -335,10 +346,13 @@ $('download-plan').addEventListener('click', () => {
 
 $('connect-button').addEventListener('click', () => {
   connectYouTube().catch((error) => {
+    state.connected = false;
+    state.accessToken = null;
     $('connect-button').disabled = false;
-    $('connect-button').textContent = 'Google sign-in unavailable ↻';
+    $('connect-button').textContent = 'Connect YouTube ↗';
+    $('connect-button').style.color = '';
     $('connect-button').title = error.message;
-    $('draft-pill').textContent = 'AUTH NEEDED';
+    setYouTubeConnectionStatus(`Could not start Google sign-in: ${error.message}`, 'error');
   });
 });
 

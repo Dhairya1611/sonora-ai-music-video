@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css?v=creative-studio-v1" />
+    <link rel="stylesheet" href="connection.css?v=youtube-connect-v2" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
@@ -17,7 +18,10 @@
     <header class="topbar">
       <a class="brand" href="#top" aria-label="Sonora home"><span class="brand-mark">✦</span> sonora</a>
       <div class="topbar-meta" id="topbar-status"><span class="status-dot"></span><span id="status-message">Creative planning demo</span><span class="divider"></span> renderer not connected</div>
-      <button class="ghost-button" id="connect-button">Connect YouTube <span>↗</span></button>
+      <div class="connect-control">
+        <button class="ghost-button" id="connect-button" type="button" aria-describedby="youtube-connection-status">Connect YouTube <span>↗</span></button>
+        <span class="youtube-connection-status" id="youtube-connection-status" role="status" aria-live="polite"></span>
+      </div>
     </header>
 
     <main id="top">
@@ -95,6 +99,6 @@
       </section>
     </main>
     <footer><span>SONORA © 2026</span><span>Stories, music videos & more · Human approval required</span><span>Ideas first. Honest generation.</span></footer>
-    <script src="app.js?v=creative-studio-v1"></script>
+    <script src="app.js?v=youtube-connect-v2"></script>
   </body>
 </html>
