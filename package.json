@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "setup:local-ai": "bash setup-local-ai.sh",
+    "test": "node --test"
   }
 }

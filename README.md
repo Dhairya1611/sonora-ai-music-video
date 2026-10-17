@@ -1,59 +1,39 @@
 # Sonora
 
-Sonora is an AI creative-studio prototype. A user chooses a music video, story, animated short, explainer, or custom format; describes the idea; and receives a production treatment and storyboard to review.
+Sonora is a GitHub Pages creative studio with an optional private renderer on the user's Mac. The local-first path creates an original soundtrack with ACE-Step, optionally adds macOS speech narration, renders a playable WebM motion-graphics video in the browser, and offers an explicit private YouTube upload after preview.
 
-## Current milestone
+## Run on this Mac
 
-The current milestone builds a dependency-free, plan-first experience. It uses a clearly labeled template planner without credentials and uses Groq for an original treatment when `GROQ_API_KEY` is configured on the local server. It supports:
-
-- five creation types: music video, story, animated short, explainer, and custom;
-- a free-form creative brief, visual style, duration, frame format, score, narration, and caption preferences;
-- an optional YouTube reference used only for broad inspiration;
-- a treatment and four-scene plan with audio cues, plus a Markdown download;
-- visible planning phases and a clear distinction between a plan and rendered media.
-
-Actual AI audio/video rendering is not connected in this milestone. The concept board is not a video preview, and no synthetic browser audio is presented as an AI-generated soundtrack. YouTube upload remains disabled until a real video asset exists.
-
-## AI provider plan
-
-The app is intentionally provider-agnostic. A media-generation milestone should expose adapter interfaces such as:
-
-```text
-generateMusic({ brief, duration }) -> audioAsset
-generateScene({ prompt, references, duration, format }) -> videoClip
-assembleProject({ scenes, audio, narration, captions }) -> videoAsset
-```
-
-### Creative director: Groq
-
-Groq can act as the text creative director through the local server’s `/api/plan` endpoint. It turns any supported creation type into a treatment, scene plan, and music/narration direction. Groq does not generate audio or video files.
-
-The browser must never receive `GROQ_API_KEY`; requests will go through a server-side endpoint. Demo Mode remains the fallback when no key is configured.
-
-### Audio model path
-
-The browser never receives provider secrets. GitHub Pages can host the static planner UI but cannot run `/api/plan` or securely call a model. Add a separate server runtime and real audio/video providers before enabling media generation. Free inference tiers are quota-limited and may not offer dependable video rendering.
-
-## Run locally
+Requirements: Apple Silicon macOS, Git, Node.js, an internet connection for setup/model downloads, and roughly 10 GB of model storage plus runtime/dependencies.
 
 ```bash
+npm run setup:local-ai
 npm start
 ```
 
-Then open `http://localhost:4173`.
+Open `http://127.0.0.1:4173` for local development, or keep the companion running and use the GitHub Pages site. On the first start, the companion installs ACE-Step's Python environment and downloads its model weights. Later starts reuse the ignored `.sonora-runtime/` folder. The companion binds only to `127.0.0.1`; it does not expose the model API to the LAN or the public internet.
 
-To enable AI-written treatments locally, create an untracked `.env.local` file based on `.env.example` and add your own Groq key. Never expose the key to the browser or commit the file. Without it, the planner clearly returns a template-based sample.
+When using GitHub Pages, the browser connects to the loopback companion at `127.0.0.1:4173`. The companion allows only the Sonora GitHub Pages origin and its local development origins. If Chrome asks for local-network access, allow it for the site. Your YouTube OAuth token remains in the page session and is not sent to the local renderer.
 
-## GitHub Pages
+Set `ACESTEP_AUTOSTART=false` to run only the web companion without starting ACE-Step. `ACE_STEP_URL` can point the companion at another local ACE-Step API during development. An optional `GROQ_API_KEY` in ignored `.env.local` enables AI-written treatments; without it, the plan/storyboard uses an explicitly labeled template. Never put provider keys in browser code or commit them.
 
-The repository includes a GitHub Actions workflow at `.github/workflows/pages.yml`. GitHub Pages serves the interactive sample-planning experience. Its static frontend intentionally does not call a missing backend or claim that media has been generated. The Groq treatment endpoint works only in a server deployment with a private key.
+## What the current pipeline really generates
 
-## Planned production integrations
+- Music: original audio from local ACE-Step 1.5; the 2B turbo DiT model and 0.6B LM are selected for a 16 GB Apple Silicon Mac. Sonora keeps the user's full caption as the DiT conditioning text and asks the LM only for missing metadata, so instrument lists aren't first paraphrased away. It forwards an explicitly requested BPM and requests WAV so the installed soundfile backend can export without a separate FFmpeg install. The model's first run can take minutes, and output quality/latency depend on local resources.
+- Narration: optional built-in macOS `say` voice, not a neural voice model.
+- Video: the browser records a format-specific (9:16, 16:9, or 1:1) motion-graphics composition, optionally with the generated audio and burned-in scene captions. The visual scenes are code-rendered motion graphics—not AI-generated film footage, diffusion images, or camera video.
+- Story, animated short, explainer, and custom modes share the same actual audio/video assembly path, with type-specific scene structures and visuals. Without `GROQ_API_KEY`, their written treatment is a template rather than an LLM-generated script.
+- YouTube: the user explicitly initiates upload after preview; the upload request sets `privacyStatus: private`. A successful API response yields a link to the private video. The user must connect a channel with upload and read-only scopes in their own Google OAuth configuration.
+- Optional YouTube reference links are not downloaded or analyzed for audio/video in this local MVP. They are inspiration-only input to a configured text planner; the music generation does not reproduce reference audio.
 
-- a real music-generation provider for original, listenable tracks;
-- an actual video-generation provider with character/style reference support;
-- job progress, retries, per-scene revision, and provider cost estimates;
-- media assembly, beat synchronization, narration mixing, captions, and format-specific exports;
-- preview and explicit plan approval before paid rendering;
-- YouTube OAuth and private-by-default upload only after a real video is reviewed;
-- rights confirmation and user approval before every upload.
+## Checks
+
+```bash
+npm test
+```
+
+The test suite uses a local mock ACE-Step API to verify the job flow, returned audio bytes, GitHub Pages CORS/private-network preflight, and rejection of unrelated origins. It does not substitute for a live generation run or an actual YouTube upload.
+
+## Hosting boundary
+
+GitHub Pages serves the static frontend only. Each person who wants local generation needs the companion and local model on their Mac; GitHub Pages cannot host the private model service. A public multi-user product would need a separately hosted, authenticated renderer and a provider/budget plan.

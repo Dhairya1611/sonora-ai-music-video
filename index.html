@@ -8,8 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=creative-studio-v1" />
-    <link rel="stylesheet" href="connection.css?v=youtube-connect-v2" />
+    <link rel="stylesheet" href="styles.css?v=local-generator-v2" />
+    <link rel="stylesheet" href="connection.css?v=youtube-upload-v3" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
@@ -17,7 +17,7 @@
     <div class="ambient ambient-two"></div>
     <header class="topbar">
       <a class="brand" href="#top" aria-label="Sonora home"><span class="brand-mark">✦</span> sonora</a>
-      <div class="topbar-meta" id="topbar-status"><span class="status-dot"></span><span id="status-message">Creative planning demo</span><span class="divider"></span> renderer not connected</div>
+      <div class="topbar-meta" id="topbar-status"><span class="status-dot"></span><span id="status-message">Checking this Mac for the local renderer…</span></div>
       <div class="connect-control">
         <button class="ghost-button" id="connect-button" type="button" aria-describedby="youtube-connection-status">Connect YouTube <span>↗</span></button>
         <span class="youtube-connection-status" id="youtube-connection-status" role="status" aria-live="polite"></span>
@@ -70,21 +70,23 @@
             <label><input id="narration-enabled" type="checkbox" /><span>Dialogue / narration</span></label>
             <label><input id="captions-enabled" type="checkbox" checked /><span>Captions</span></label>
           </fieldset>
-          <button class="primary-button" id="generate-button"><span class="button-icon">✦</span> Create my treatment <span class="arrow">↗</span></button>
-          <ol class="phase-list" id="phase-list" aria-label="Treatment progress">
-            <li data-phase="1"><span>01</span> Brief</li><li data-phase="2"><span>02</span> Plan</li><li data-phase="3"><span>03</span> Review</li>
+          <button class="primary-button" id="generate-button"><span class="button-icon">✦</span> Create my video <span class="arrow">↗</span></button>
+          <ol class="phase-list" id="phase-list" aria-label="Video creation progress">
+            <li data-phase="1"><span>01</span> Brief</li><li data-phase="2"><span>02</span> Plan</li><li data-phase="3"><span>03</span> Sound</li><li data-phase="4"><span>04</span> Render</li><li data-phase="5"><span>05</span> Preview</li>
           </ol>
           <p class="build-status" id="build-status" aria-live="polite">Ready — choose a format and describe your idea.</p>
         </div>
 
         <div class="preview-panel panel">
-          <div class="preview-top"><div><span class="section-index">02</span><h2>Your creative treatment</h2></div><span class="draft-pill" id="draft-pill" aria-live="polite">WAITING</span></div>
+          <div class="preview-top"><div><span class="section-index">02</span><h2>Your creation preview</h2></div><span class="draft-pill" id="draft-pill" aria-live="polite">WAITING</span></div>
           <div class="visual-preview" id="visual-preview">
+            <video class="preview-video" id="preview-video" controls playsinline></video>
             <div class="preview-grid"></div><div class="sun-disc"></div><div class="mountain mountain-back"></div><div class="mountain mountain-front"></div>
-            <div class="preview-copy"><span class="preview-kicker" id="preview-kicker">SONORA / CONCEPT BOARD</span><strong id="preview-title">Your idea, taking shape</strong><span id="preview-subtitle">A plan first. The finished video comes after generation is connected.</span></div>
+            <div class="preview-copy"><span class="preview-kicker" id="preview-kicker">SONORA / MOTION ARTWORK</span><strong id="preview-title">Your idea, taking shape</strong><span id="preview-subtitle">A playable video preview appears here after rendering.</span></div>
             <div class="preview-stamp">CONCEPT ONLY<br /><span>NOT A RENDERED VIDEO</span></div>
           </div>
-          <div class="preview-footer"><div class="audio-line"><span class="audio-bars">♫</span><span id="audio-label">No audio generated yet</span></div><span class="mono-label" id="provider-label">PLAN PREVIEW</span></div>
+          <div class="preview-footer"><div class="audio-line"><span class="audio-bars">♫</span><span id="audio-label">No audio generated yet</span></div><span class="mono-label" id="provider-label">LOCAL GENERATION</span></div>
+          <a class="text-button video-download" id="download-video" hidden download="sonora-video.webm">Download rendered video ↗</a>
           <div class="treatment-details" id="treatment-details" hidden>
             <article><span class="row-label">THE IDEA</span><p id="treatment-summary"></p></article>
             <div class="treatment-columns"><article><span class="row-label">VISUAL LANGUAGE</span><p id="visual-language"></p></article><article><span class="row-label">SOUND PLAN</span><p id="sound-plan"></p></article></div>
@@ -95,10 +97,10 @@
 
       <section class="lower-grid">
         <div class="story-panel panel"><div class="panel-heading"><div><span class="section-index">03</span><h2>Scene-by-scene plan</h2></div><span class="mono-label" id="scene-count">PLAN PENDING</span></div><div class="scene-list" id="scene-list"><article class="scene scene-empty"><span class="scene-number">YOUR STORYBOARD</span><strong>Waiting for your idea</strong><p>Scenes, dialogue, music cues, and visual direction will appear here.</p></article></div><button class="text-button" id="download-plan" type="button" hidden>Download treatment ↗</button></div>
-        <div class="publish-panel panel"><div class="panel-heading"><div><span class="section-index">04</span><h2>Render & publish</h2></div><span class="mono-label">AFTER REVIEW</span></div><div class="publish-card"><div class="youtube-badge">▶</div><div><strong>One complete video file</strong><p>Music, narration, visuals, and captions assembled together.</p></div><span class="lock">⌑</span></div><div class="render-notice"><strong>Rendering is not connected yet</strong><p>This build creates an editable treatment and storyboard. It does not pretend a video or AI-generated soundtrack has been rendered. A real audio/video provider must be connected before this step can run.</p></div><div class="publish-note"><span>ⓘ</span><span>You review the finished preview and approve the private YouTube upload.</span></div><button class="outline-button" id="publish-button" disabled>Available after a real video is rendered <span>↗</span></button></div>
+        <div class="publish-panel panel"><div class="panel-heading"><div><span class="section-index">04</span><h2>Render & publish</h2></div><span class="mono-label">AFTER REVIEW</span></div><div class="publish-card"><div class="youtube-badge">▶</div><div><strong>Preview before upload</strong><p>Local AI audio, optional Mac voice, captions, and motion graphics in one video file.</p></div><span class="lock">⌑</span></div><div class="render-notice" id="renderer-status" data-state="checking"><strong id="renderer-title">Checking for the Sonora local companion…</strong><p id="renderer-description">The GitHub Pages site needs the companion running on this Mac to generate audio. The video visuals are locally rendered motion graphics—not AI-generated film footage.</p><button class="text-button" id="check-renderer" type="button">Check local engine ↻</button></div><div class="publish-note"><span>ⓘ</span><span>Review the complete playable video first. YouTube upload stays private and only starts when you press the button.</span></div><button class="outline-button" id="publish-button" disabled>Connect YouTube and render a preview first <span>↗</span></button></div>
       </section>
     </main>
     <footer><span>SONORA © 2026</span><span>Stories, music videos & more · Human approval required</span><span>Ideas first. Honest generation.</span></footer>
-    <script src="app.js?v=youtube-connect-v3"></script>
+    <script src="app.js?v=local-render-v2"></script>
   </body>
 </html>

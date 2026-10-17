@@ -1,54 +1,35 @@
-const state = { type: 'music-video', format: 'short', duration: 30, connected: false, generated: false, accessToken: null, channelTitle: '', videoBlob: null, previewUrl: '', plan: null };
-const PREVIEW_SECONDS = 10;
+const state = {
+  type: 'music-video', format: 'short', duration: 30, connected: false,
+  generated: false, accessToken: null, channelTitle: '', videoBlob: null,
+  previewUrl: '', plan: null, localReady: false, job: null, jobAssets: {},
+};
 const YOUTUBE_CLIENT_ID = '442084033193-giinlub1bcoh39r5v2ior5nr2aq7oe1r.apps.googleusercontent.com';
 const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
 let authRequestTimer;
 let authRequestId = 0;
 
 const typeCopy = {
-  'music-video': {
-    label: 'Music video',
-    prompt: 'An original, melodic indie-pop video at golden hour: intimate vocals, fingerpicked guitar, warm bass, brushed drums, and a road-trip story that opens up into a joyful final chorus...',
-    briefLabel: 'Describe the music video you imagine',
-    help: 'Include the sound, mood, story, and details that make this yours.',
-    music: true,
-    narration: false,
-  },
-  story: {
-    label: 'Story',
-    prompt: 'A hopeful short story about a tiny robot protecting the last living plant in a quiet, abandoned city. Give it a surprising but warm ending...',
-    briefLabel: 'What story should Sonora tell?',
-    help: 'Describe the characters, setting, conflict, and the feeling or ending you want.',
-    music: true,
-    narration: true,
-  },
-  'animated-short': {
-    label: 'Animated short',
-    prompt: 'A curious young fox discovers a tiny floating garden above the city. Stylized 3D animation, expressive character acting, playful camera movement, and a gentle ending...',
-    briefLabel: 'Describe the animated short',
-    help: 'Tell us about the characters, animation style, action, and world.',
-    music: true,
-    narration: false,
-  },
-  explainer: {
-    label: 'Explainer',
-    prompt: 'Explain how a solar panel turns sunlight into electricity for a curious 12-year-old. Use clear visual metaphors, friendly narration, and simple animated diagrams...',
-    briefLabel: 'What should the video explain?',
-    help: 'Name the topic, who it is for, and the one thing viewers should remember.',
-    music: true,
-    narration: true,
-  },
-  custom: {
-    label: 'Custom video',
-    prompt: 'Describe any video you can imagine—its purpose, audience, characters or subject, tone, and what the viewer should feel...',
-    briefLabel: 'What would you like to create?',
-    help: 'Start anywhere. Sonora will shape the idea into a production plan.',
-    music: true,
-    narration: false,
-  },
+  'music-video': { label: 'Music video', prompt: 'An original, melodic indie-pop video at golden hour: intimate vocals, fingerpicked guitar, warm bass, brushed drums, and a road-trip story that opens up into a joyful final chorus...', briefLabel: 'Describe the music video you imagine', help: 'Include the sound, mood, story, and details that make this yours.', music: true, narration: false },
+  story: { label: 'Story', prompt: 'A hopeful short story about a tiny robot protecting the last living plant in a quiet, abandoned city. Give it a surprising but warm ending...', briefLabel: 'What story should Sonora tell?', help: 'Describe the characters, setting, conflict, and the feeling or ending you want.', music: true, narration: true },
+  'animated-short': { label: 'Animated short', prompt: 'A curious young fox discovers a tiny floating garden above the city. Expressive character motion, playful camera movement, and a gentle ending...', briefLabel: 'Describe the animated short', help: 'Tell us about the characters, animation style, action, and world.', music: true, narration: false },
+  explainer: { label: 'Explainer', prompt: 'Explain how a solar panel turns sunlight into electricity for a curious 12-year-old. Use clear visual metaphors, friendly narration, and simple animated diagrams...', briefLabel: 'What should the video explain?', help: 'Name the topic, who it is for, and the one thing viewers should remember.', music: true, narration: true },
+  custom: { label: 'Custom video', prompt: 'Describe any video you can imagine—its purpose, audience, characters or subject, tone, and what the viewer should feel...', briefLabel: 'What would you like to create?', help: 'Start anywhere. Sonora will shape the idea into a production plan.', music: true, narration: false },
 };
 
 const $ = (id) => document.getElementById(id);
+const localServiceBase = () => location.hostname.endsWith('github.io') || location.protocol === 'file:'
+  ? 'http://127.0.0.1:4173'
+  : location.origin;
+
+async function localFetch(path, options = {}) {
+  const response = await fetch(`${localServiceBase()}${path}`, {
+    ...options,
+    mode: 'cors',
+    credentials: 'omit',
+    cache: 'no-store',
+  });
+  return response;
+}
 
 function setYouTubeConnectionStatus(message, stateName = '') {
   const status = $('youtube-connection-status');
@@ -69,11 +50,10 @@ function selectCreationType(type) {
   $('brief-text').placeholder = copy.prompt;
   $('music-enabled').checked = copy.music;
   $('narration-enabled').checked = copy.narration;
-  $('preview-kicker').textContent = `SONORA / ${copy.label.toUpperCase()} TREATMENT`;
+  $('preview-kicker').textContent = `SONORA / ${copy.label.toUpperCase()}`;
 }
 
 document.querySelectorAll('.type-card').forEach((button) => button.addEventListener('click', () => selectCreationType(button.dataset.type)));
-
 document.querySelectorAll('.quick-tags button').forEach((button) => button.addEventListener('click', () => {
   const style = $('visual-style');
   const selection = button.dataset.style;
@@ -85,89 +65,56 @@ document.querySelectorAll('.quick-tags button').forEach((button) => button.addEv
 $('format-select').addEventListener('change', (event) => { state.format = event.target.value; });
 $('duration-select').addEventListener('change', (event) => { state.duration = Number(event.target.value); });
 
-function inferMusicAnalysis(input) {
-  const direction = input.toLowerCase();
-  const dreamy = /dream|ambient|soft|ethereal|calm|lo-fi/.test(direction);
-  const energetic = /dance|edm|house|techno|upbeat|energetic|club|trap|hip.?hop/.test(direction);
-  const acoustic = /acoustic|guitar|piano|folk|organic|indie|jazz|strings/.test(direction);
-  const genre = energetic ? 'electronic' : acoustic ? 'acoustic indie' : dreamy ? 'ambient pop' : 'cinematic pop';
-  const instruments = acoustic ? ['fingerpicked acoustic guitar', 'warm piano', 'brush drums', 'round bass'] : energetic ? ['analog synth bass', 'bright pluck', 'four-on-the-floor kick', 'claps and hi-hats'] : ['felt piano', 'soft strings', 'sub bass', 'textured drums'];
-  const tempo = energetic ? 122 : dreamy ? 82 : acoustic ? 96 : 108;
-  return { genre, mood: dreamy ? 'dreamy' : energetic ? 'driving' : acoustic ? 'warm' : 'cinematic', energy: energetic ? 'high' : dreamy ? 'low' : 'building', tempo, instruments, palette: ['violet', 'warm amber', 'midnight blue'], visualThemes: ['motion', 'light', 'atmosphere'] };
-}
-
-function demoAnalysis(request) {
-  const analysis = inferMusicAnalysis(`${request.input} ${request.visualStyle}`);
-  const title = request.input.split(/[.!?\n]/)[0].trim().split(/\s+/).slice(0, 7).join(' ').replace(/[,;:]$/, '') || typeCopy[request.type].label;
-  const sceneTypes = {
-    'music-video': [
-      ['Opening image', 'Introduce the visual world and let the first musical motif breathe.'],
-      ['The pulse arrives', 'Build movement and texture as the rhythm and arrangement open up.'],
-      ['The emotional lift', 'Bring the central image or performance into focus at the musical peak.'],
-      ['Last note', 'Resolve the visual story with a final image that lands with the music.'],
-    ],
-    story: [
-      ['A world before', 'Meet the protagonist and understand what matters in their world.'],
-      ['The turning point', 'An unexpected event forces the protagonist to make a choice.'],
-      ['The hard choice', 'The choice has consequences; raise the emotional and visual stakes.'],
-      ['A changed world', 'Resolve the central conflict with a clear, satisfying final image.'],
-    ],
-    'animated-short': [
-      ['Meet the character', 'Establish the character silhouette, personality, and animated world.'],
-      ['A curious discovery', 'Use expressive motion and a visual surprise to set the story in motion.'],
-      ['The playful challenge', 'Escalate the action while preserving the character design and screen direction.'],
-      ['A little wonder', 'Finish with a memorable, emotionally clear animated payoff.'],
-    ],
-    explainer: [
-      ['The question', 'Start with the viewer’s question and a concrete visual hook.'],
-      ['The simple model', 'Introduce one visual metaphor that makes the main idea intuitive.'],
-      ['How it works', 'Show the key steps in order, with narration and captions kept in sync.'],
-      ['The takeaway', 'Repeat the core idea and close with a practical, memorable summary.'],
-    ],
-    custom: [
-      ['Set the scene', 'Establish the subject, audience, tone, and visual world.'],
-      ['Build the idea', 'Develop the central action or message with a distinct visual progression.'],
-      ['Make the moment', 'Deliver the most important reveal, change, or emotional beat.'],
-      ['Leave an impression', 'Resolve the idea with a strong final image or call to action.'],
-    ],
-  };
-  const titles = sceneTypes[request.type] || sceneTypes.custom;
-  const sceneSeconds = Math.floor(request.duration / titles.length);
-  const musicEnabled = request.sound?.music !== false;
-  const narrationEnabled = request.sound?.narration === true;
-  const captionsEnabled = request.sound?.captions !== false;
-  const musicDirection = musicEnabled
-    ? request.type === 'music-video'
-      ? `${analysis.genre} at about ${analysis.tempo} BPM, with ${analysis.instruments.join(', ')}; a distinct melody and arrangement that follow the brief.`
-      : `An original ${analysis.mood} underscore with ${analysis.instruments.slice(0, 3).join(', ')}; leave space for the story and dialogue.`
-    : 'No score requested. Preserve dialogue and natural sound, with intentional quiet where it helps.';
-  return {
-    provider: 'demo',
-    type: request.type,
-    title,
-    subtitle: `${typeCopy[request.type].label} · ${request.duration}s · ${request.format === 'wide' ? '16:9' : request.format === 'square' ? '1:1' : '9:16'}`,
-    treatment: `A ${request.duration}-second ${typeCopy[request.type].label.toLowerCase()} built from the user’s direction: ${request.input}`,
-    visualStyle: request.visualStyle || 'Let the brief guide a coherent visual style, color palette, and camera language.',
-    audioDirection: musicDirection,
-    narration: narrationEnabled ? 'Plan original narration or character dialogue; mix it clearly above the score.' : 'No narration requested.',
-    captions: captionsEnabled ? 'Add readable, synchronized captions with safe margins for the selected aspect ratio.' : 'Captions are off.',
-    analysis,
-    scenes: titles.map(([sceneTitle, description], index) => ({ title: sceneTitle, description: `${description} Direction: ${request.input}`, durationSeconds: index === titles.length - 1 ? request.duration - sceneSeconds * (titles.length - 1) : sceneSeconds, audioCue: index === 0 ? 'Opening cue' : index === titles.length - 1 ? 'Resolve and fade' : 'Transition cue' })),
-  };
-}
-
 function setBuildPhase(phase, label, detail = '') {
   $('build-status').textContent = detail ? `${label} · ${detail}` : label;
   document.querySelectorAll('#phase-list li').forEach((item) => {
     const itemPhase = Number(item.dataset.phase);
-    item.classList.toggle('complete', itemPhase < phase);
+    item.classList.toggle('complete', itemPhase < phase || phase === 6);
     item.classList.toggle('current', itemPhase === phase);
   });
 }
 
-function pause(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+function setRendererStatus(title, description, status = '') {
+  $('renderer-title').textContent = title;
+  $('renderer-description').textContent = description;
+  $('renderer-status').dataset.state = status;
+  $('status-message').textContent = status === 'ready' ? 'Local music engine ready' : status === 'error' ? 'Local renderer unavailable' : 'Local renderer status';
+  state.localReady = status === 'ready';
 }
+
+async function checkRenderer() {
+  const checkButton = $('check-renderer');
+  checkButton.disabled = true;
+  checkButton.textContent = 'Checking…';
+  setRendererStatus('Checking for the Sonora local companion…', 'Looking for the service on this Mac at 127.0.0.1:4173.');
+  try {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 5000);
+    const response = await localFetch('/api/health', { signal: controller.signal });
+    window.clearTimeout(timer);
+    const status = await response.json();
+    if (!response.ok) throw new Error(status.error || `Local service returned ${response.status}.`);
+    if (status.ready) {
+      setRendererStatus('This Mac’s local music engine is reachable ✓', 'ACE-Step is available. Its first request downloads model weights; later generations use the cached local models.', 'ready');
+    } else {
+      setRendererStatus('Sonora companion found; music model is not ready yet', 'Start the local companion with “npm start” and wait for ACE-Step to finish loading. Then check again.', 'warming');
+    }
+  } catch (error) {
+    const blocked = error.name === 'AbortError' || error instanceof TypeError;
+    setRendererStatus(
+      'Local companion not reachable',
+      blocked
+        ? 'Run “npm start” from Sonora’s folder on this Mac. If your browser asks, allow the GitHub Pages site to access devices on your local network, then check again.'
+        : error.message,
+      'error',
+    );
+  } finally {
+    checkButton.disabled = false;
+    checkButton.textContent = 'Check local engine ↻';
+  }
+}
+
+$('check-renderer').addEventListener('click', checkRenderer);
 
 function waitForGoogle() {
   return new Promise((resolve, reject) => {
@@ -191,13 +138,23 @@ function failYouTubeConnection(error) {
   setYouTubeConnectionStatus(`Connection failed: ${error.message}`, 'error');
 }
 
+function updatePublishButton() {
+  const button = $('publish-button');
+  const canPublish = state.connected && state.generated;
+  button.disabled = !canPublish;
+  if (button.dataset.done === 'true') return;
+  button.textContent = canPublish
+    ? 'Upload this video privately to YouTube ↗'
+    : state.connected ? 'Render a preview before uploading' : 'Connect YouTube and render a preview first';
+}
+
 function connectYouTube() {
   const button = $('connect-button');
   const requestId = ++authRequestId;
   button.textContent = 'Loading Google sign-in…';
   button.disabled = true;
   button.title = '';
-  setYouTubeConnectionStatus('Waiting for Google authorization…');
+  setYouTubeConnectionStatus('Waiting for Google account selection…');
   const google = window.google?.accounts?.oauth2 ? window.google : null;
   if (!google) {
     waitForGoogle().then(() => {
@@ -221,12 +178,11 @@ function connectYouTube() {
           state.accessToken = response.access_token;
           state.connected = true;
           button.disabled = false;
-          button.innerHTML = 'YouTube connected <span>✓</span>';
+          button.textContent = 'YouTube connected ✓';
           button.style.color = 'var(--accent)';
-          button.title = '';
-          setYouTubeConnectionStatus('Upload access authorized for this session.', 'connected');
-          $('publish-button').disabled = true;
-          $('publish-button').textContent = 'Available after a real video is rendered';
+          button.title = 'Authorized for this browser session.';
+          setYouTubeConnectionStatus('Connected for this browser session. Videos upload privately only when you press Upload.', 'connected');
+          updatePublishButton();
         } catch (error) {
           failYouTubeConnection(error);
         }
@@ -236,7 +192,7 @@ function connectYouTube() {
       if (requestId !== authRequestId) return;
       authRequestId += 1;
       failYouTubeConnection(new Error('Google sign-in did not respond. Allow pop-ups for this site, then retry.'));
-    }, 30000);
+    }, 30_000);
     requestClient.requestAccessToken({ prompt: 'select_account consent' });
   } catch (error) {
     window.clearTimeout(authRequestTimer);
@@ -244,220 +200,7 @@ function connectYouTube() {
   }
 }
 
-async function requestPlan(request) {
-  // GitHub Pages cannot run a private server-side model. Keep the treatment
-  // builder honest and label its local plan as a demo instead of claiming AI.
-  if (window.location.hostname.endsWith('github.io')) return demoAnalysis(request);
-  try {
-    const response = await fetch('/api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'The creative plan could not be prepared.');
-    return result;
-  } catch (error) {
-    if (error instanceof TypeError || /Failed to fetch/i.test(error.message)) return demoAnalysis(request);
-    throw error;
-  }
-}
-
-$('generate-button').addEventListener('click', async () => {
-  const button = $('generate-button');
-  const input = $('brief-text').value.trim();
-  const reference = $('source-input').value.trim();
-  if (!input) {
-    $('brief-text').focus();
-    $('draft-pill').textContent = 'ADD AN IDEA';
-    $('draft-pill').title = 'Describe what you want Sonora to create.';
-    setBuildPhase(0, 'Waiting for your idea', 'Describe the video you want to make.');
-    return;
-  }
-  const request = {
-    input,
-    reference,
-    visualStyle: $('visual-style').value.trim(),
-    type: state.type,
-    format: $('format-select').value,
-    duration: Number($('duration-select').value),
-    sound: {
-      music: $('music-enabled').checked,
-      narration: $('narration-enabled').checked,
-      captions: $('captions-enabled').checked,
-    },
-  };
-  state.format = request.format;
-  state.duration = request.duration;
-  state.plan = null;
-  state.generated = false;
-  state.videoBlob = null;
-  $('treatment-details').hidden = true;
-  $('download-plan').hidden = true;
-  $('publish-button').disabled = true;
-  button.disabled = true;
-  button.innerHTML = '<span class="button-icon">◌</span> Shaping your treatment…';
-  try {
-    setBuildPhase(1, 'Phase 1/3 · Brief received', `${typeCopy[state.type].label} · ${request.duration} seconds · ${request.format}`);
-    await pause(120);
-    setBuildPhase(2, 'Phase 2/3 · Building treatment', reference ? 'the reference is inspiration only' : 'turning your idea into a production plan');
-    const result = await requestPlan(request);
-    renderPlan(result, request);
-    setBuildPhase(4, 'Phase 3/3 · Treatment ready', result.provider === 'groq' ? 'review the AI-written plan below' : 'sample plan only — no media has been rendered');
-  } catch (error) {
-    $('draft-pill').textContent = 'PLAN FAILED';
-    $('draft-pill').title = error.message;
-    setBuildPhase(0, 'Plan stopped', error.message);
-  } finally {
-    button.disabled = false;
-    button.innerHTML = `<span class="button-icon">✦</span> ${state.plan ? 'Refine my treatment' : 'Create my treatment'} <span class="arrow">↗</span>`;
-  }
-});
-
-function renderPlan(result, request) {
-  state.plan = result;
-  $('preview-title').textContent = result.title || 'Your idea, taking shape';
-  $('preview-subtitle').textContent = result.subtitle || `${typeCopy[state.type].label} · ${request.duration}s`;
-  $('preview-kicker').textContent = `SONORA / ${typeCopy[state.type].label.toUpperCase()} TREATMENT`;
-  $('treatment-summary').textContent = result.treatment || request.input;
-  $('visual-language').textContent = result.visualStyle || request.visualStyle || 'Guided by your brief.';
-  $('sound-plan').textContent = result.audioDirection || (request.sound.music ? 'Original score planned; not yet rendered.' : 'No score requested.');
-  $('voice-plan').textContent = [result.narration || (request.sound.narration ? 'Dialogue or narration planned.' : 'No narration requested.'), result.captions || (request.sound.captions ? 'Captions requested.' : 'Captions are off.')].join(' ');
-  $('treatment-details').hidden = false;
-  $('audio-label').textContent = request.sound.music ? 'Music direction planned · no audio rendered' : 'No music requested';
-  $('provider-label').textContent = result.provider === 'groq' ? 'GROQ TREATMENT' : 'DEMO TREATMENT';
-  $('draft-pill').textContent = result.provider === 'groq' ? 'PLAN READY' : 'SAMPLE PLAN';
-  $('draft-pill').title = result.provider === 'groq' ? 'Treatment prepared by the configured text model. No media has been rendered.' : 'A template-based sample plan. No AI media has been generated.';
-  $('scene-count').textContent = `${result.scenes?.length || 0} SCENES · ${request.duration}s`;
-  $('scene-list').replaceChildren();
-  (result.scenes || []).forEach((scene, index) => {
-    const article = document.createElement('article');
-    article.className = 'scene';
-    const number = document.createElement('span');
-    number.className = 'scene-number';
-    number.textContent = `SCENE ${String(index + 1).padStart(2, '0')} · ${scene.durationSeconds || ''}s`;
-    const title = document.createElement('strong');
-    title.textContent = scene.title || `Scene ${index + 1}`;
-    const description = document.createElement('p');
-    description.textContent = scene.description || '';
-    const cue = document.createElement('small');
-    cue.className = 'scene-cue';
-    cue.textContent = scene.audioCue || '';
-    article.append(number, title, description, cue);
-    $('scene-list').append(article);
-  });
-  $('download-plan').hidden = false;
-  $('status-message').textContent = result.provider === 'groq' ? 'Groq treatment' : 'Sample treatment';
-}
-
-$('download-plan').addEventListener('click', () => {
-  if (!state.plan) return;
-  const plan = state.plan;
-  const lines = [
-    `# ${plan.title || 'Sonora treatment'}`,
-    '',
-    plan.subtitle || '',
-    '',
-    `## Treatment\n${plan.treatment || ''}`,
-    `## Visual language\n${plan.visualStyle || ''}`,
-    `## Sound plan\n${plan.audioDirection || ''}`,
-    `## Voice & captions\n${[plan.narration, plan.captions].filter(Boolean).join('\n')}`,
-    '## Scenes',
-    ...(plan.scenes || []).flatMap((scene, index) => [`### ${index + 1}. ${scene.title} (${scene.durationSeconds || '?'}s)`, scene.description || '', scene.audioCue || '']),
-    '',
-    'Planning document only. No audio or video was rendered.',
-  ];
-  const file = new Blob([lines.join('\n\n')], { type: 'text/markdown;charset=utf-8' });
-  const url = URL.createObjectURL(file);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'sonora-treatment.md';
-  link.click();
-  URL.revokeObjectURL(url);
-});
-
-$('connect-button').addEventListener('click', () => {
-  connectYouTube();
-});
-
-function createMusicContext() {
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) throw new Error('This browser cannot synthesize the music preview.');
-  return new AudioContextClass();
-}
-
-function scheduleTone(context, output, frequency, when, duration, volume, type = 'sine', wetOutput = null, pan = 0) {
-  const oscillator = context.createOscillator();
-  const envelope = context.createGain();
-  const panner = context.createStereoPanner();
-  oscillator.type = type;
-  oscillator.frequency.setValueAtTime(frequency, when);
-  envelope.gain.setValueAtTime(0.0001, when);
-  envelope.gain.exponentialRampToValueAtTime(volume, when + Math.min(0.035, duration / 3));
-  envelope.gain.exponentialRampToValueAtTime(0.0001, when + duration);
-  oscillator.connect(envelope);
-  envelope.connect(panner);
-  panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), when);
-  panner.connect(output);
-  if (wetOutput) panner.connect(wetOutput);
-  oscillator.start(when);
-  oscillator.stop(when + duration + 0.05);
-}
-
-function scheduleNoise(context, output, when, duration, volume, highpass = 0, wetOutput = null, pan = 0) {
-  const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * duration), context.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let index = 0; index < data.length; index += 1) data[index] = Math.random() * 2 - 1;
-  const source = context.createBufferSource();
-  const envelope = context.createGain();
-  const panner = context.createStereoPanner();
-  source.buffer = buffer;
-  envelope.gain.setValueAtTime(0.0001, when);
-  envelope.gain.exponentialRampToValueAtTime(volume, when + 0.006);
-  envelope.gain.exponentialRampToValueAtTime(0.0001, when + duration);
-  if (highpass) {
-    const filter = context.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.value = highpass;
-    source.connect(filter);
-    filter.connect(envelope);
-  } else source.connect(envelope);
-  envelope.connect(panner);
-  panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), when);
-  panner.connect(output);
-  if (wetOutput) panner.connect(wetOutput);
-  source.start(when);
-  source.stop(when + duration + 0.02);
-}
-
-function schedulePluck(context, output, wetOutput, frequency, when, duration, volume, pan) {
-  const oscillator = context.createOscillator();
-  const harmonic = context.createOscillator();
-  const harmonicGain = context.createGain();
-  const filter = context.createBiquadFilter();
-  const envelope = context.createGain();
-  const panner = context.createStereoPanner();
-  oscillator.type = 'triangle';
-  oscillator.frequency.setValueAtTime(frequency, when);
-  harmonic.type = 'sine';
-  harmonic.frequency.setValueAtTime(frequency * 2.01, when);
-  harmonicGain.gain.value = 0.24;
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(2600, when);
-  filter.frequency.exponentialRampToValueAtTime(900, when + Math.min(0.35, duration));
-  filter.Q.value = 0.7;
-  envelope.gain.setValueAtTime(0.0001, when);
-  envelope.gain.exponentialRampToValueAtTime(volume, when + 0.008);
-  envelope.gain.exponentialRampToValueAtTime(0.0001, when + duration);
-  oscillator.connect(filter);
-  harmonic.connect(harmonicGain);
-  harmonicGain.connect(filter);
-  filter.connect(envelope);
-  envelope.connect(panner);
-  panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), when);
-  panner.connect(output);
-  if (wetOutput) panner.connect(wetOutput);
-  oscillator.start(when);
-  harmonic.start(when);
-  oscillator.stop(when + duration + 0.05);
-  harmonic.stop(when + duration + 0.05);
-}
+$('connect-button').addEventListener('click', connectYouTube);
 
 function hashInput(input) {
   let hash = 2166136261;
@@ -475,189 +218,388 @@ function seededRandom(seed) {
   };
 }
 
-function midiToFrequency(note) {
-  return 440 * (2 ** ((note - 69) / 12));
+function paletteColor(value, fallback) {
+  const color = String(value || '').trim().toLowerCase();
+  if (/^#[\da-f]{6}$/i.test(color)) return color;
+  const names = { violet: '#5e54b7', purple: '#5e54b7', amber: '#d6964b', orange: '#d6964b', blue: '#385f95', midnight: '#252b56', green: '#55906d', teal: '#3e8791', pink: '#b45f85', red: '#a64f59', gold: '#be9350', warm: '#b47756' };
+  return Object.entries(names).find(([name]) => color.includes(name))?.[1] || fallback;
 }
 
-function createReverb(context, output, random) {
-  const reverb = context.createConvolver();
-  const wet = context.createGain();
-  const length = Math.floor(context.sampleRate * 1.2);
-  const impulse = context.createBuffer(2, length, context.sampleRate);
-  for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
-    const data = impulse.getChannelData(channel);
-    for (let index = 0; index < data.length; index += 1) {
-      const fade = (1 - index / data.length) ** 2;
-      data[index] = (random() * 2 - 1) * fade * (channel ? 0.82 : 1);
-    }
+function wrapText(context, text, maxWidth, maxLines = 2) {
+  const words = String(text || '').split(/\s+/);
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (context.measureText(candidate).width > maxWidth && current) {
+      lines.push(current);
+      current = word;
+      if (lines.length === maxLines - 1) break;
+    } else current = candidate;
   }
-  reverb.buffer = impulse;
-  wet.gain.value = 0.16;
-  reverb.connect(wet);
-  wet.connect(output);
-  return reverb;
+  if (current) lines.push(current);
+  if (lines.length === maxLines && words.length > lines.join(' ').split(/\s+/).length) lines[maxLines - 1] = `${lines[maxLines - 1].replace(/[.,;:!?]?$/, '')}…`;
+  return lines;
 }
 
-function scheduleKick(context, output, when, volume) {
-  const oscillator = context.createOscillator();
-  const envelope = context.createGain();
-  oscillator.type = 'sine';
-  oscillator.frequency.setValueAtTime(150, when);
-  oscillator.frequency.exponentialRampToValueAtTime(48, when + 0.16);
-  envelope.gain.setValueAtTime(0.0001, when);
-  envelope.gain.exponentialRampToValueAtTime(volume, when + 0.006);
-  envelope.gain.exponentialRampToValueAtTime(0.0001, when + 0.19);
-  oscillator.connect(envelope);
-  envelope.connect(output);
-  oscillator.start(when);
-  oscillator.stop(when + 0.22);
-}
+function drawMotionFrame(context, width, height, progress, scene, sceneIndex, plan, request, random, amplitude) {
+  const colors = plan.analysis?.palette || [];
+  const first = paletteColor(colors[0], '#34366f');
+  const second = paletteColor(colors[1], '#805070');
+  const third = paletteColor(colors[2], '#e5a66e');
+  const gradient = context.createLinearGradient(width * (0.1 + progress * 0.18), 0, width * (0.9 - progress * 0.15), height);
+  gradient.addColorStop(0, first);
+  gradient.addColorStop(0.52, second);
+  gradient.addColorStop(1, third);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
 
-function sourceEnergyForFrame(analysis, progress) {
-  const energy = String(analysis.energy || '').toLowerCase();
-  const base = /high|driving|energetic/.test(energy) ? 0.82 : /low|calm|soft/.test(energy) ? 0.3 : 0.56;
-  const tempo = Number(analysis.tempo) || 100;
-  return Math.max(0.18, Math.min(1, base + Math.sin(progress * Math.PI * (tempo / 28)) * 0.16));
-}
-
-function scheduleMusic(context, destination, input, analysis = {}) {
-  const random = seededRandom(hashInput(input));
-  const direction = `${input} ${JSON.stringify(analysis)}`.toLowerCase();
-  const profiles = [
-    { name: 'acoustic pulse', tempo: 94, scale: [0, 2, 3, 5, 7, 10], chord: [0, 3, 5, 4], melody: [0, 2, 4, 2, 5, 4, 2, 0], kit: 'organic', leadType: 'triangle', leadRest: 0.18 },
-    { name: 'midnight groove', tempo: 108, scale: [0, 2, 3, 5, 7, 9, 10], chord: [0, 5, 3, 4], melody: [0, 0, 2, 4, 2, 5, 4, 2], kit: 'groove', leadType: 'sawtooth', leadRest: 0.08 },
-    { name: 'dream-pop pulse', tempo: 86, scale: [0, 2, 3, 7, 9, 10], chord: [0, 3, 5, 4], melody: [4, 5, 4, 2, 0, 2, 4, 5], kit: 'soft', leadType: 'sine', leadRest: 0.35 },
-    { name: 'cinematic motion', tempo: 102, scale: [0, 2, 4, 5, 7, 9, 11], chord: [0, 4, 5, 3], melody: [0, 4, 2, 5, 4, 7, 5, 2], kit: 'wide', leadType: 'triangle', leadRest: 0.22 },
-  ];
-  const seed = hashInput(direction);
-  const requestedGenre = String(analysis.genre || '').toLowerCase();
-  const profileIndex = /electronic|dance|house|techno|trap/.test(requestedGenre) ? 1 : /ambient|dream|lo-fi/.test(requestedGenre) ? 2 : /acoustic|folk|indie|jazz/.test(requestedGenre) ? 0 : /cinematic|orchestral|film/.test(requestedGenre) ? 3 : seed % profiles.length;
-  const profile = { ...profiles[profileIndex], scale: [...profiles[profileIndex].scale], chord: [...profiles[profileIndex].chord], melody: [...profiles[profileIndex].melody] };
-  const requestedTempo = Number(analysis.tempo);
-  if (Number.isFinite(requestedTempo)) profile.tempo = Math.max(70, Math.min(150, requestedTempo));
-  if (/piano|keys/.test(String(analysis.instruments || '').toLowerCase())) profile.leadType = 'sine';
-  if (/guitar|pluck|acoustic/.test(String(analysis.instruments || '').toLowerCase())) profile.leadType = 'triangle';
-  if (direction.includes('dream') || direction.includes('ambient') || direction.includes('soft')) profile.tempo = Math.min(profile.tempo, 92);
-  const rootChoices = [{ midi: 45, name: 'A' }, { midi: 48, name: 'C' }, { midi: 50, name: 'D' }, { midi: 52, name: 'E' }, { midi: 55, name: 'G' }, { midi: 57, name: 'A' }];
-  const rootChoice = rootChoices[Math.floor(random() * rootChoices.length)];
-  const root = rootChoice.midi;
-  const keyName = `${rootChoice.name} ${profile.scale[2] === 3 ? 'minor' : 'major'}`;
-  const beat = 60 / profile.tempo;
-  const step = beat / 2;
-  const start = context.currentTime + 0.08;
-  const length = PREVIEW_SECONDS;
-  const steps = Math.ceil(length / step);
-  const compressor = context.createDynamicsCompressor();
-  compressor.threshold.value = -24;
-  compressor.knee.value = 18;
-  compressor.ratio.value = 8;
-  compressor.attack.value = 0.003;
-  compressor.release.value = 0.2;
-  compressor.connect(destination);
-  const reverb = createReverb(context, compressor, random);
-  const pad = context.createGain();
-  pad.gain.value = profile.kit === 'soft' ? 0.09 : 0.055;
-  pad.connect(compressor);
-
-  for (let index = 0; index < steps; index += 1) {
-    const swing = index % 2 ? (random() - 0.5) * Math.min(0.045, step * 0.12) : 0;
-    const when = start + index * step + swing;
-    const bar = Math.floor(index / 8);
-    const chordRoot = root + profile.chord[bar % profile.chord.length];
-    const scaleNote = (stepIndex) => profile.scale[(stepIndex + bar) % profile.scale.length];
-    const sourceEnergy = /high|driving|energetic/.test(String(analysis.energy || '').toLowerCase()) ? 0.9 : /low|calm|soft/.test(String(analysis.energy || '').toLowerCase()) ? 0.35 : 0.6;
-    if (index % 2 === 0) {
-      scheduleTone(context, compressor, midiToFrequency(chordRoot - 12), when, beat * 0.42, 0.055 + sourceEnergy * 0.045, 'sine', reverb, (random() - 0.5) * 0.25);
-      scheduleTone(context, compressor, midiToFrequency(chordRoot + 12), when, beat * 0.25, 0.035, 'triangle', reverb, (random() - 0.5) * 0.45);
-    }
-    const kickHit = profile.kit === 'groove' ? index % 4 === 0 || index % 8 === 6 : profile.kit === 'soft' ? index % 8 === 0 : profile.kit === 'wide' ? index % 4 === 0 || index % 8 === 3 : index % 4 === 0;
-    if (kickHit) {
-      scheduleKick(context, compressor, when, (profile.kit === 'groove' ? 0.3 : 0.2) + sourceEnergy * 0.12);
-      scheduleTone(context, compressor, midiToFrequency(chordRoot + 12), when + step * 0.03, beat * 0.8, 0.028, 'sawtooth', reverb, -0.2);
-    }
-    const snareHit = profile.kit === 'soft' ? index % 8 === 6 : profile.kit === 'wide' ? index % 8 === 4 : index % 8 === 4 || (profile.kit === 'groove' && index % 8 === 7);
-    if (snareHit) scheduleNoise(context, compressor, when, 0.15, profile.kit === 'soft' ? 0.045 : 0.085, 700, reverb, 0.16);
-    const hatHit = profile.kit === 'soft' ? index % 4 === 2 : profile.kit === 'wide' ? index % 2 === 1 : index % 2 === 0 || random() > 0.72;
-    if (hatHit) scheduleNoise(context, compressor, when + step * 0.16, 0.052, profile.kit === 'soft' ? 0.012 : 0.02, 4200, null, random() > 0.5 ? 0.45 : -0.45);
-
-    // A plucked, acoustic-style arpeggio gives each generated score a musical
-    // identity instead of a row of identical electronic beeps.
-    const arpeggioNote = chordRoot + scaleNote(index % 4) + (index % 8 > 3 ? 12 : 0);
-    schedulePluck(context, compressor, reverb, midiToFrequency(arpeggioNote + 12), when + step * 0.08, step * 0.72, 0.055 + random() * 0.025, (index % 4 - 1.5) * 0.18);
-    if (index % 4 === 0) {
-      const third = chordRoot + profile.scale[2] + 12;
-      const fifth = chordRoot + profile.scale[4] + 12;
-      scheduleTone(context, pad, midiToFrequency(third), when, beat * 1.9, 0.12, 'sine', null, -0.3);
-      scheduleTone(context, pad, midiToFrequency(fifth), when, beat * 1.9, 0.1, 'triangle', null, 0.3);
-    }
-    if (index % 2 === 0 && random() > profile.leadRest) {
-      const phraseIndex = (index / 2 + Math.floor(seed / 97) % profile.melody.length) % profile.melody.length;
-      const melodyNote = chordRoot + profile.scale[profile.melody[phraseIndex] % profile.scale.length] + 24;
-      scheduleTone(context, compressor, midiToFrequency(melodyNote), when + step * 0.04, beat * 0.34, 0.045 + random() * 0.025, profile.leadType, reverb, (random() - 0.5) * 0.8);
-    }
+  const phase = (progress * 0.8 + sceneIndex * 0.19) * Math.PI * 2;
+  const centerX = width * (0.5 + Math.sin(phase) * 0.05);
+  const centerY = height * (0.43 + Math.cos(phase * 0.7) * 0.04);
+  const scale = Math.min(width, height);
+  context.save();
+  context.globalAlpha = 0.13;
+  context.strokeStyle = '#ffffff';
+  context.lineWidth = Math.max(1, scale * 0.0015);
+  for (let line = 1; line <= 8; line += 1) {
+    const y = height * 0.3 + line * scale * 0.035;
+    context.beginPath(); context.moveTo(0, y); context.lineTo(width, y + Math.sin(phase + line) * scale * 0.018); context.stroke();
   }
-  return { ...profile, keyName, seed };
+  context.restore();
+
+  for (let item = 0; item < 26; item += 1) {
+    const x = random() * width;
+    const baseY = random() * height;
+    const y = (baseY - progress * height * (0.08 + random() * 0.18) + height) % height;
+    const radius = scale * (0.0015 + random() * 0.0045) * (1 + amplitude * 2.4);
+    context.globalAlpha = 0.16 + amplitude * 0.23;
+    context.fillStyle = item % 3 ? '#f5f2df' : '#d9f55a';
+    context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
+  }
+  context.globalAlpha = 1;
+
+  const orbRadius = scale * (0.105 + amplitude * 0.035);
+  const orbGradient = context.createRadialGradient(centerX - orbRadius * 0.3, centerY - orbRadius * 0.4, orbRadius * 0.08, centerX, centerY, orbRadius);
+  orbGradient.addColorStop(0, '#fff2ce'); orbGradient.addColorStop(0.45, '#f5bd8b'); orbGradient.addColorStop(1, '#e78c95');
+  context.fillStyle = orbGradient;
+  context.globalAlpha = 0.78;
+  context.beginPath(); context.arc(centerX, centerY, orbRadius, 0, Math.PI * 2); context.fill();
+  context.globalAlpha = 1;
+
+  const type = request.type;
+  if (type === 'explainer') {
+    const nodeY = height * 0.58;
+    const nodeXs = [width * 0.25, width * 0.5, width * 0.75];
+    context.strokeStyle = 'rgba(255,255,255,.7)'; context.lineWidth = scale * 0.005;
+    context.beginPath(); context.moveTo(nodeXs[0], nodeY); context.lineTo(nodeXs[2], nodeY); context.stroke();
+    nodeXs.forEach((x, index) => {
+      context.fillStyle = index === sceneIndex % 3 ? '#d9f55a' : '#f5f2df';
+      context.beginPath(); context.arc(x, nodeY, scale * 0.027, 0, Math.PI * 2); context.fill();
+    });
+  } else if (type === 'animated-short') {
+    const characterX = width * (0.5 + Math.sin(phase * 1.4) * 0.14);
+    const characterY = height * 0.59 + Math.abs(Math.sin(phase * 2)) * scale * 0.03;
+    context.fillStyle = '#d9f55a';
+    context.beginPath(); context.ellipse(characterX, characterY, scale * 0.055, scale * 0.07, 0, 0, Math.PI * 2); context.fill();
+    context.beginPath(); context.arc(characterX, characterY - scale * 0.071, scale * 0.037, 0, Math.PI * 2); context.fill();
+    context.fillStyle = '#28233f'; context.beginPath(); context.arc(characterX + scale * 0.012, characterY - scale * 0.079, scale * 0.004, 0, Math.PI * 2); context.fill();
+    context.beginPath(); context.arc(characterX + scale * 0.028, characterY - scale * 0.079, scale * 0.004, 0, Math.PI * 2); context.fill();
+  } else if (type === 'story') {
+    context.globalAlpha = 0.77;
+    context.fillStyle = '#252548';
+    context.beginPath(); context.ellipse(width * 0.5, height * 0.67, width * 0.52, height * 0.18, 0, 0, Math.PI * 2); context.fill();
+    context.fillStyle = '#d9f55a';
+    context.beginPath(); context.arc(width * (0.39 + Math.sin(phase) * 0.04), height * 0.61, scale * 0.033, 0, Math.PI * 2); context.fill();
+    context.fillStyle = '#f5f2df';
+    context.beginPath(); context.arc(width * (0.6 - Math.sin(phase) * 0.04), height * 0.62, scale * 0.026, 0, Math.PI * 2); context.fill();
+    context.globalAlpha = 1;
+  } else if (type === 'music-video') {
+    const bars = 34;
+    const barWidth = width * 0.008;
+    for (let bar = 0; bar < bars; bar += 1) {
+      const x = (width - bars * barWidth * 1.7) / 2 + bar * barWidth * 1.7;
+      const wave = Math.abs(Math.sin(bar * 0.7 + phase)) * (0.025 + amplitude * 0.08);
+      const barHeight = height * wave;
+      context.fillStyle = bar % 5 === 0 ? '#d9f55a' : 'rgba(255,255,255,.78)';
+      context.fillRect(x, height * 0.67 - barHeight / 2, barWidth, Math.max(scale * 0.004, barHeight));
+    }
+  } else {
+    context.strokeStyle = 'rgba(255,255,255,.74)'; context.lineWidth = scale * 0.004;
+    context.beginPath(); context.arc(centerX, centerY, orbRadius * (1.4 + amplitude * 0.12), phase, phase + Math.PI * 1.5); context.stroke();
+  }
+
+  const lower = height * 0.74;
+  const titleSize = Math.round(scale * (width < height ? 0.061 : 0.052));
+  context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillStyle = '#fffaf0';
+  context.font = `700 ${titleSize}px Manrope, Arial, sans-serif`;
+  const titleLines = wrapText(context, scene?.title || plan.title || typeCopy[type].label, width * 0.82, 2);
+  titleLines.forEach((line, index) => context.fillText(line, width / 2, lower + index * titleSize * 1.16));
+  if (request.sound.captions) {
+    const caption = String(scene?.description || request.input).split(/\s+Direction:/i)[0];
+    context.font = `500 ${Math.round(scale * 0.022)}px Manrope, Arial, sans-serif`;
+    context.fillStyle = 'rgba(255,250,240,.86)';
+    const lines = wrapText(context, caption, width * 0.76, 2);
+    lines.forEach((line, index) => context.fillText(line, width / 2, lower + titleLines.length * titleSize * 1.15 + scale * 0.035 + index * scale * 0.03));
+  }
+  context.textAlign = 'left'; context.textBaseline = 'alphabetic';
+  context.fillStyle = '#d9f55a'; context.font = `500 ${Math.round(scale * 0.014)}px "DM Mono", monospace`;
+  context.fillText(`SONORA · ${typeCopy[type].label.toUpperCase()} · ${String(sceneIndex + 1).padStart(2, '0')}`, width * 0.055, height * 0.075);
 }
 
-function canvasVideo(title, format, input, audioContext, analysis = {}) {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = format === 'short' ? 720 : 1280;
-    canvas.height = format === 'short' ? 1280 : 720;
-    const context = canvas.getContext('2d');
-    const stream = canvas.captureStream(30);
-    const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find((candidate) => MediaRecorder.isTypeSupported(candidate));
-    if (!mime) return reject(new Error('This browser cannot render a demo video.'));
-    if (!audioContext) return reject(new Error('Music synthesis is unavailable for this preview.'));
-    const audioDestination = audioContext.createMediaStreamDestination();
-    const audioTracks = audioDestination.stream.getAudioTracks();
-    if (!audioTracks.length) return reject(new Error('The browser could not create an audio track.'));
-    const combinedStream = new MediaStream([...stream.getVideoTracks(), ...audioTracks]);
-    const recorder = new MediaRecorder(combinedStream, { mimeType: mime, videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 128_000 });
-    const chunks = [];
-    recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
-    recorder.onerror = () => reject(new Error('Video rendering failed.'));
-    recorder.onstop = () => {
-      stream.getTracks().forEach((track) => track.stop());
-      combinedStream.getTracks().forEach((track) => track.stop());
-      audioContext.close().catch(() => {});
-      resolve(new Blob(chunks, { type: mime }));
-    };
-    const started = performance.now();
-    const draw = (now) => {
-      const progress = Math.min((now - started) / (PREVIEW_SECONDS * 1000), 1);
-      const sourceWave = sourceEnergyForFrame(analysis, progress);
-      const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
-      gradient.addColorStop(0, '#17174b'); gradient.addColorStop(.48, '#6c3f88'); gradient.addColorStop(1, '#f0a16e');
-      context.fillStyle = gradient; context.fillRect(0, 0, canvas.width, canvas.height);
-      context.globalAlpha = .22; context.fillStyle = '#d9f55a';
-      context.beginPath(); context.arc(canvas.width * (.73 - progress * .12), canvas.height * .28, canvas.width * (.08 + sourceWave * .09), 0, Math.PI * 2); context.fill();
-      context.globalAlpha = 1; context.fillStyle = '#f5f1e8'; context.textAlign = 'center';
-      context.font = `700 ${Math.round(canvas.width / 14)}px Manrope, sans-serif`; context.fillText(title, canvas.width / 2, canvas.height * .72);
-      context.font = `400 ${Math.round(canvas.width / 42)}px DM Mono, monospace`; context.fillStyle = '#d9f55a'; context.fillText('SONORA / ORIGINAL VISUAL STUDY', canvas.width / 2, canvas.height * .78);
-      if (progress < 1) requestAnimationFrame(draw); else recorder.stop();
-    };
-    const begin = () => {
-      if (audioContext.state !== 'running') {
-        stream.getTracks().forEach((track) => track.stop());
-        combinedStream.getTracks().forEach((track) => track.stop());
-        audioContext.close().catch(() => {});
-        reject(new Error('The browser blocked music playback. Click Build again to authorize the audio preview.'));
-        return;
-      }
-      const profile = scheduleMusic(audioContext, audioDestination, input, analysis);
-      $('audio-label').textContent = `AI music score · ${profile.name} · ${profile.keyName} · ${profile.tempo} BPM`;
-      recorder.start();
-      requestAnimationFrame(draw);
-    };
-    if (audioContext.state === 'suspended') audioContext.resume().then(begin).catch(() => reject(new Error('The browser blocked music playback. Click Build again to authorize the audio preview.')));
-    else begin();
+function decodeAudio(context, arrayBuffer) {
+  return new Promise((resolve, reject) => context.decodeAudioData(arrayBuffer.slice(0), resolve, () => reject(new Error('The generated audio could not be decoded by this browser.'))));
+}
+
+async function fetchJobAsset(jobId, asset) {
+  const response = await localFetch(`/api/jobs/${jobId}/${asset}`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `Could not load generated ${asset}.`);
+  }
+  return response.arrayBuffer();
+}
+
+function renderPlan(result, request) {
+  state.plan = result;
+  $('preview-title').textContent = result.title || 'Your idea, taking shape';
+  $('preview-subtitle').textContent = result.subtitle || `${typeCopy[request.type].label} · ${request.duration}s`;
+  $('preview-kicker').textContent = `SONORA / ${typeCopy[request.type].label.toUpperCase()}`;
+  $('treatment-summary').textContent = result.treatment || request.input;
+  $('visual-language').textContent = result.visualStyle || request.visualStyle || 'Guided by your brief.';
+  $('sound-plan').textContent = result.audioDirection || (request.sound.music ? 'Original score requested.' : 'No score requested.');
+  $('voice-plan').textContent = [result.narration || (request.sound.narration ? 'A local system voice will narrate the scene beats.' : 'No narration requested.'), result.captions || (request.sound.captions ? 'Captions requested.' : 'Captions are off.')].join(' ');
+  $('treatment-details').hidden = false;
+  $('audio-label').textContent = request.sound.music ? 'Waiting for the original local score…' : request.sound.narration ? 'Preparing local voice narration…' : 'Silent video as requested';
+  $('provider-label').textContent = result.provider === 'groq' ? 'GROQ + ACE-STEP' : 'TEMPLATE + ACE-STEP';
+  $('draft-pill').textContent = result.provider === 'groq' ? 'PLAN READY' : 'TEMPLATE PLAN';
+  $('draft-pill').title = result.provider === 'groq' ? 'The configured text model prepared this treatment; audio is generated separately.' : 'No text-model key is configured, so scene beats use a template. Local ACE-Step still generates original audio.';
+  $('scene-count').textContent = `${result.scenes?.length || 0} SCENES · ${request.duration}s`;
+  $('scene-list').replaceChildren();
+  (result.scenes || []).forEach((scene, index) => {
+    const article = document.createElement('article');
+    article.className = 'scene';
+    const number = document.createElement('span'); number.className = 'scene-number'; number.textContent = `SCENE ${String(index + 1).padStart(2, '0')} · ${scene.durationSeconds || ''}s`;
+    const title = document.createElement('strong'); title.textContent = scene.title || `Scene ${index + 1}`;
+    const description = document.createElement('p'); description.textContent = scene.description || '';
+    const cue = document.createElement('small'); cue.className = 'scene-cue'; cue.textContent = scene.audioCue || '';
+    article.append(number, title, description, cue); $('scene-list').append(article);
   });
+  $('download-plan').hidden = false;
+}
+
+function currentRequest() {
+  return {
+    input: $('brief-text').value.trim(),
+    reference: $('source-input').value.trim(),
+    visualStyle: $('visual-style').value.trim(),
+    type: state.type,
+    format: $('format-select').value,
+    duration: Number($('duration-select').value),
+    sound: { music: $('music-enabled').checked, narration: $('narration-enabled').checked, captions: $('captions-enabled').checked },
+  };
+}
+
+async function pollJob(jobId, request) {
+  const started = Date.now();
+  while (Date.now() - started < Math.max(65 * 60_000, request.duration * 65_000)) {
+    const response = await localFetch(`/api/jobs/${jobId}`);
+    const job = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(job.error || `Local job status failed (${response.status}).`);
+    state.job = job;
+    if (job.status === 'failed') throw new Error(job.error || job.message || 'The local generation stopped.');
+    if (job.phase === 'plan') setBuildPhase(2, 'Phase 2/5 · Shaping the production plan', job.message);
+    else if (job.phase === 'music') setBuildPhase(3, 'Phase 3/5 · Generating original music', job.message);
+    else if (job.phase === 'narration') setBuildPhase(3, 'Phase 3/5 · Preparing narration', job.message);
+    else if (job.phase === 'ready') return job;
+    else setBuildPhase(2, 'Phase 2/5 · Preparing your idea', job.message);
+    await new Promise((resolve) => window.setTimeout(resolve, 2200));
+  }
+  throw new Error('The local job took too long to respond. Check the engine status and retry.');
+}
+
+function resetVideoPreview() {
+  state.generated = false;
+  state.videoBlob = null;
+  if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+  state.previewUrl = '';
+  $('preview-video').removeAttribute('src');
+  $('preview-video').load();
+  $('preview-video').classList.remove('ready');
+  $('visual-preview').classList.remove('has-video');
+  $('download-video').hidden = true;
+  $('draft-pill').textContent = 'GENERATING';
+  $('publish-button').dataset.done = 'false';
+  updatePublishButton();
+}
+
+async function startGeneration(request) {
+  const button = $('generate-button');
+  state.format = request.format;
+  state.duration = request.duration;
+  state.plan = null;
+  state.job = null;
+  state.request = request;
+  state.jobAssets = {};
+  resetVideoPreview();
+  $('treatment-details').hidden = true;
+  $('download-plan').hidden = true;
+  button.disabled = true;
+  button.textContent = 'Preparing your creation…';
+  setBuildPhase(1, 'Phase 1/5 · Brief received', `${typeCopy[request.type].label} · ${request.duration} seconds · ${request.format}`);
+  try {
+    const response = await localFetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
+    const initial = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(initial.error || `Local renderer rejected this brief (${response.status}).`);
+    setBuildPhase(2, 'Phase 2/5 · Preparing the production plan', 'waiting for the local creative pipeline');
+    const finished = await pollJob(initial.id, request);
+    state.job = finished;
+    state.plan = finished.plan;
+    if (!state.plan) throw new Error('The local plan step finished without returning a storyboard.');
+    renderPlan(state.plan, request);
+    if (request.sound.music) state.jobAssets.music = await fetchJobAsset(finished.id, 'audio');
+    if (request.sound.narration) state.jobAssets.narration = await fetchJobAsset(finished.id, 'narration');
+    $('audio-label').textContent = [request.sound.music ? 'Original ACE-Step music ready' : '', request.sound.narration ? 'Mac voice ready' : ''].filter(Boolean).join(' · ') || 'Silent video as requested';
+    $('provider-label').textContent = `${finished.plan.provider === 'groq' ? 'GROQ + ' : ''}${request.sound.music ? 'ACE-STEP' : 'MOTION GRAPHICS'}`;
+    $('draft-pill').textContent = 'AUDIO READY';
+    $('draft-pill').title = 'Audio is prepared. Press Render video preview to assemble it with your motion graphics.';
+    setBuildPhase(4, 'Phase 3/5 · Sound ready', 'review the plan, then render a preview');
+    button.disabled = false;
+    button.textContent = 'Render video preview · ' + request.duration + 's';
+  } catch (error) {
+    $('draft-pill').textContent = 'GENERATION FAILED';
+    $('draft-pill').title = error.message;
+    setBuildPhase(0, 'Generation stopped', error.message);
+    button.disabled = false;
+    button.innerHTML = '<span class="button-icon">✦</span> Try again <span class="arrow">↗</span>';
+  }
+}
+
+async function renderVideo(request) {
+  const button = $('generate-button');
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  let audioContext = null;
+  const canvas = document.createElement('canvas');
+  if (request.format === 'short') { canvas.width = 720; canvas.height = 1280; }
+  else if (request.format === 'square') { canvas.width = 960; canvas.height = 960; }
+  else { canvas.width = 1280; canvas.height = 720; }
+  const context = canvas.getContext('2d', { alpha: false });
+  if (!context) throw new Error('This browser could not create the video canvas.');
+  const videoStream = canvas.captureStream(30);
+  const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9', 'video/webm'].find((candidate) => MediaRecorder.isTypeSupported(candidate));
+  if (!mime) throw new Error('This browser cannot encode a WebM preview. Open the GitHub Pages site in Chrome or Edge.');
+  let recorder;
+  let audioDestination;
+  let master;
+  let musicSource;
+  let narrationSource;
+  const streams = [videoStream];
+  try {
+    if (request.sound.music || request.sound.narration) {
+      if (!AudioContextClass) throw new Error('This browser does not support audio rendering.');
+      audioContext = new AudioContextClass();
+      // Invoke resume inside the user click that starts the render, so browser
+      // autoplay policies do not discard the real generated audio track.
+      const resumed = audioContext.resume();
+      const decodedMusic = request.sound.music ? await decodeAudio(audioContext, state.jobAssets.music) : null;
+      const decodedNarration = request.sound.narration ? await decodeAudio(audioContext, state.jobAssets.narration) : null;
+      await resumed;
+      if (decodedMusic && decodedMusic.duration < request.duration - 1.25) {
+        throw new Error(`The model returned ${Math.round(decodedMusic.duration)} seconds of music for a ${request.duration}-second video. Try a shorter video or retry generation.`);
+      }
+      audioDestination = audioContext.createMediaStreamDestination();
+      master = audioContext.createGain();
+      master.gain.value = 0.9;
+      if (decodedMusic) {
+        musicSource = audioContext.createBufferSource(); musicSource.buffer = decodedMusic;
+        const musicGain = audioContext.createGain(); musicGain.gain.value = 0.78;
+        musicSource.connect(musicGain); musicGain.connect(master);
+      }
+      if (decodedNarration) {
+        narrationSource = audioContext.createBufferSource(); narrationSource.buffer = decodedNarration;
+        const voiceGain = audioContext.createGain(); voiceGain.gain.value = 1;
+        narrationSource.connect(voiceGain); voiceGain.connect(master);
+      }
+      const audioTracks = audioDestination.stream.getAudioTracks();
+      if ((decodedMusic || decodedNarration) && !audioTracks.length) throw new Error('The browser could not attach audio to the rendered video.');
+      streams.push(audioDestination.stream);
+    }
+    const combinedStream = new MediaStream(streams.flatMap((stream) => stream.getTracks()));
+    recorder = new MediaRecorder(combinedStream, { mimeType: mime, videoBitsPerSecond: 4_000_000, audioBitsPerSecond: 192_000 });
+    const chunks = [];
+    await new Promise((resolve, reject) => {
+      let animationFrame = 0;
+      let startAt = 0;
+      const random = seededRandom(hashInput(`${request.input}|${request.visualStyle}|${request.type}`));
+      const scenes = state.plan.scenes?.length ? state.plan.scenes : [{ title: state.plan.title, description: request.input, durationSeconds: request.duration }];
+      let durationTotal = scenes.reduce((total, scene) => total + (Number(scene.durationSeconds) || request.duration / scenes.length), 0);
+      if (Math.abs(durationTotal - request.duration) > 0.5) {
+        const factor = request.duration / durationTotal;
+        scenes.forEach((scene) => { scene.durationSeconds = (Number(scene.durationSeconds) || request.duration / scenes.length) * factor; });
+      }
+      const cumulative = [];
+      durationTotal = 0;
+      scenes.forEach((scene) => { durationTotal += Number(scene.durationSeconds) || request.duration / scenes.length; cumulative.push(durationTotal); });
+      const frequencyData = new Uint8Array(128);
+      const analyser = audioContext && master ? audioContext.createAnalyser() : null;
+      if (analyser) { analyser.fftSize = 256; master.connect(analyser); analyser.connect(audioDestination); }
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onerror = () => reject(new Error('The video encoder stopped unexpectedly.'));
+      recorder.onstop = () => resolve();
+      const draw = (now) => {
+        const progress = Math.min((now - startAt) / (request.duration * 1000), 1);
+        const elapsed = progress * request.duration;
+        let sceneIndex = cumulative.findIndex((edge) => elapsed < edge);
+        if (sceneIndex < 0) sceneIndex = scenes.length - 1;
+        let amplitude = 0;
+        if (analyser) {
+          analyser.getByteTimeDomainData(frequencyData);
+          for (const value of frequencyData) amplitude += Math.abs(value - 128) / 128;
+          amplitude /= frequencyData.length;
+        }
+        drawMotionFrame(context, canvas.width, canvas.height, progress, scenes[sceneIndex], sceneIndex, state.plan, request, random, amplitude);
+        if (progress < 1) animationFrame = requestAnimationFrame(draw);
+        else if (recorder.state === 'recording') recorder.stop();
+      };
+      try {
+        recorder.start(1000);
+        startAt = performance.now();
+        if (audioContext) {
+          const audioStart = audioContext.currentTime + 0.08;
+          if (musicSource) musicSource.start(audioStart);
+          if (narrationSource) narrationSource.start(audioStart);
+        }
+        animationFrame = requestAnimationFrame(draw);
+      } catch (error) {
+        cancelAnimationFrame(animationFrame);
+        reject(error);
+      }
+    });
+    const blob = new Blob(chunks, { type: mime });
+    if (!blob.size) throw new Error('The browser produced an empty video file.');
+    return blob;
+  } finally {
+    streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
+    if (audioDestination) audioDestination.stream.getTracks().forEach((track) => track.stop());
+    if (audioContext && audioContext.state !== 'closed') await audioContext.close().catch(() => {});
+  }
 }
 
 async function uploadToYouTube(blob) {
-  const metadata = { snippet: { title: $('preview-title').textContent, description: 'Original visual study created with Sonora AI. Generated from an original creative direction.', categoryId: '10' }, status: { privacyStatus: 'private', selfDeclaredMadeForKids: false } };
-  const init = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', { method: 'POST', headers: { Authorization: `Bearer ${state.accessToken}`, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': blob.type, 'X-Upload-Content-Length': String(blob.size) }, body: JSON.stringify(metadata) });
+  const isMusic = state.type === 'music-video';
+  const metadata = {
+    snippet: {
+      title: $('preview-title').textContent.slice(0, 100),
+      description: 'Created with Sonora. Review the video preview in the app before uploading. Visuals are motion graphics assembled from the creative brief.',
+      categoryId: isMusic ? '10' : '22',
+    },
+    status: { privacyStatus: 'private' },
+  };
+  const init = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${state.accessToken}`, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': blob.type, 'X-Upload-Content-Length': String(blob.size) },
+    body: JSON.stringify(metadata),
+  });
   if (!init.ok) { const error = await init.json().catch(() => ({})); throw new Error(error.error?.message || `YouTube upload could not start (${init.status}).`); }
   const location = init.headers.get('Location');
   if (!location) throw new Error('YouTube did not return an upload URL.');
@@ -667,22 +609,90 @@ async function uploadToYouTube(blob) {
   return result;
 }
 
+async function buildClickHandler() {
+  const button = $('generate-button');
+  if (state.job?.status === 'ready' && state.plan && state.jobAssets) {
+    button.disabled = true;
+    button.textContent = 'Rendering your video…';
+    $('draft-pill').textContent = 'RENDERING';
+    setBuildPhase(5, 'Phase 4/5 · Rendering motion graphics', `${state.duration} seconds · keep this tab open`);
+    try {
+      const request = state.request || currentRequest();
+      state.videoBlob = await renderVideo(request);
+      state.generated = true;
+      if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+      state.previewUrl = URL.createObjectURL(state.videoBlob);
+      const video = $('preview-video');
+      video.src = state.previewUrl;
+      video.classList.add('ready');
+      $('visual-preview').classList.add('has-video');
+      $('download-video').href = state.previewUrl;
+      $('download-video').download = `sonora-${request.type}-${request.duration}s.webm`;
+      $('download-video').hidden = false;
+      $('draft-pill').textContent = 'PREVIEW READY';
+      $('draft-pill').title = 'The video contains the generated soundtrack and locally rendered motion graphics. Play it before upload.';
+      setBuildPhase(6, 'Phase 5/5 · Preview ready', `${Math.round(state.videoBlob.size / 1024 / 1024 * 10) / 10} MB · play it above before upload`);
+      updatePublishButton();
+      button.disabled = false;
+      button.textContent = 'Create a different video';
+      state.job = null;
+    } catch (error) {
+      $('draft-pill').textContent = 'RENDER FAILED';
+      $('draft-pill').title = error.message;
+      setBuildPhase(0, 'Video render stopped', error.message);
+      button.disabled = false;
+      button.textContent = 'Retry video render';
+    }
+    return;
+  }
+  const request = currentRequest();
+  if (!request.input) {
+    $('brief-text').focus();
+    $('draft-pill').textContent = 'ADD AN IDEA';
+    setBuildPhase(0, 'Waiting for your idea', 'Describe the video you want to make.');
+    return;
+  }
+  await startGeneration(request);
+}
+
+$('generate-button').addEventListener('click', buildClickHandler);
+
+$('download-plan').addEventListener('click', () => {
+  if (!state.plan) return;
+  const plan = state.plan;
+  const lines = [
+    `# ${plan.title || 'Sonora treatment'}`, '', plan.subtitle || '', '',
+    `## Treatment\n${plan.treatment || ''}`, `## Visual language\n${plan.visualStyle || ''}`,
+    `## Sound plan\n${plan.audioDirection || ''}`,
+    `## Voice & captions\n${[plan.narration, plan.captions].filter(Boolean).join('\n')}`,
+    '## Scenes', ...(plan.scenes || []).flatMap((scene, index) => [`### ${index + 1}. ${scene.title} (${scene.durationSeconds || '?'}s)`, scene.description || '', scene.audioCue || '']),
+    '', 'Planning note: this treatment does not represent generated footage. The finished preview uses locally rendered motion graphics.',
+  ];
+  const file = new Blob([lines.join('\n\n')], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a'); link.href = url; link.download = 'sonora-treatment.md'; link.click();
+  URL.revokeObjectURL(url);
+});
+
 $('publish-button').addEventListener('click', async () => {
-  if (!state.connected || !state.generated) return;
+  if ($('publish-button').dataset.done === 'true') return;
+  if (!state.connected || !state.generated || !state.videoBlob) return;
   const button = $('publish-button');
-  button.disabled = true; button.textContent = 'Rendering private draft…'; $('draft-pill').textContent = 'RENDERING';
+  button.disabled = true; button.textContent = 'Uploading private video…'; $('draft-pill').textContent = 'UPLOADING';
   try {
-    const blob = state.videoBlob;
-    if (!blob) throw new Error('Build the music preview before uploading.');
-    button.textContent = 'Uploading to YouTube…'; $('draft-pill').textContent = 'UPLOADING';
-    const result = await uploadToYouTube(blob);
+    const result = await uploadToYouTube(state.videoBlob);
     const videoId = result.id;
-    $('draft-pill').textContent = 'UPLOADED PRIVATE';
-    button.textContent = 'Open private upload ↗'; button.disabled = false;
+    if (!videoId) throw new Error('YouTube did not confirm the uploaded video.');
+    $('draft-pill').textContent = 'UPLOADED PRIVATELY';
+    button.textContent = 'Open private YouTube video ↗'; button.disabled = false; button.dataset.done = 'true';
     button.onclick = () => window.open(`https://youtu.be/${videoId}`, '_blank', 'noopener');
   } catch (error) {
-    $('draft-pill').textContent = 'UPLOAD FAILED'; $('draft-pill').title = error.message; button.textContent = 'Retry private upload ↗'; button.disabled = false;
+    $('draft-pill').textContent = 'UPLOAD FAILED'; $('draft-pill').title = error.message;
+    button.textContent = 'Retry private upload ↗'; button.disabled = false;
+    $('build-status').textContent = `Upload failed: ${error.message}`;
   }
 });
 
 selectCreationType(state.type);
+updatePublishButton();
+checkRenderer();
